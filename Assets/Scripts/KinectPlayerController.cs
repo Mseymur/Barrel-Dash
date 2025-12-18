@@ -3,7 +3,7 @@ using UnityEngine;
 using Windows.Kinect;
 
 [RequireComponent(typeof(CharacterController))]
-public class KinectPlayerMovement : MonoBehaviour
+public class KinectPlayerController : MonoBehaviour
 {
     [Header("Movement Settings")]
     public float moveSpeed = 5f;
@@ -18,8 +18,7 @@ public class KinectPlayerMovement : MonoBehaviour
     private Body[] bodies;
     private bool gameStarted = false;
     private bool isWaitingForMovement = true;
-    private bool usingManager = false; // Track if using KinectSensorManager
-
+    
     // Destination walking
     private bool isWalkingToDestination = false;
     private Transform targetDestination;
@@ -29,67 +28,33 @@ public class KinectPlayerMovement : MonoBehaviour
         controller = GetComponent<CharacterController>();
         animator  = GetComponentInChildren<Animator>();
 
-        // PROPER FIX: Initialize from persistent manager (prevents power-cycling)
-        // Uncomment the line below to use the manager, or keep direct initialization
-        // StartCoroutine(InitFromManager());
-        
-        // Quick fix: Direct initialization (sensor stays open, but creates new reader)
-        InitializeKinect();
-
-        // Start waiting for movement detection
-        StartCoroutine(WaitForMovementOrTimeout());
+        // Initialize from persistent manager
+        StartCoroutine(InitFromManager());
     }
 
-    /// <summary>
-    /// PROPER FIX: Initialize from persistent KinectSensorManager.
-    /// Use this instead of InitializeKinect() for best results.
-    /// </summary>
     private IEnumerator InitFromManager()
     {
-        // Wait for KinectSensorManager to be ready
+        Debug.Log("[KinectPlayerController] Waiting for KinectSensorManager...");
+
+        // Ensure Manager exists
+        if (KinectSensorManager.Instance == null)
+        {
+            Debug.LogError("No KinectSensorManager found! Make sure it is in the scene.");
+            yield break;
+        }
+
+        // Wait for the persistent sensor to be ready
         yield return KinectSensorManager.Instance.WaitForReady();
 
         // Get references from the manager (shared resources)
         sensor = KinectSensorManager.Instance.Sensor;
         bodyFrameReader = KinectSensorManager.Instance.BodyFrameReader;
         bodies = KinectSensorManager.Instance.Bodies;
-        usingManager = true;
 
-        Debug.Log("[KinectPlayerMovement] Using KinectSensorManager (persistent). Sensor open: " + 
-                  (sensor != null ? sensor.IsOpen.ToString() : "null") + 
-                  ", Available: " + (sensor != null ? sensor.IsAvailable.ToString() : "null"));
+        Debug.Log("[KinectPlayerController] Linked to KinectSensorManager.");
 
         // Start waiting for movement detection
         StartCoroutine(WaitForMovementOrTimeout());
-    }
-
-    /// <summary>
-    /// QUICK FIX: Direct initialization (sensor stays open, but creates new reader per scene).
-    /// </summary>
-    private void InitializeKinect()
-    {
-        sensor = KinectSensor.GetDefault();
-        if (sensor != null)
-        {
-            // If sensor is already open (from previous scene), reuse it
-            if (!sensor.IsOpen)
-            {
-                sensor.Open();
-                Debug.Log("[KinectPlayerMovement] Kinect sensor opened.");
-            }
-            else
-            {
-                Debug.Log("[KinectPlayerMovement] Kinect sensor already open (reusing from previous scene).");
-            }
-            
-            bodyFrameReader = sensor.BodyFrameSource.OpenReader();
-            bodies = new Body[sensor.BodyFrameSource.BodyCount];
-            Debug.Log("[KinectPlayerMovement] Kinect initialized. Sensor open: " + sensor.IsOpen + ", Available: " + sensor.IsAvailable);
-        }
-        else
-        {
-            Debug.LogWarning("[KinectPlayerMovement] KinectSensor.GetDefault() returned null. Kinect not connected?");
-        }
     }
 
     private IEnumerator WaitForMovementOrTimeout()
@@ -97,7 +62,7 @@ public class KinectPlayerMovement : MonoBehaviour
         float waitTime = 5f; // 5 seconds max wait
         float elapsed = 0f;
         
-        Debug.Log("[KinectPlayerMovement] Waiting for Kinect movement detection (max 5 seconds)...");
+        Debug.Log("[KinectPlayerController] Waiting for Kinect movement detection (max 5 seconds)...");
         
         while (elapsed < waitTime && !gameStarted)
         {
@@ -106,7 +71,7 @@ public class KinectPlayerMovement : MonoBehaviour
             {
                 gameStarted = true;
                 isWaitingForMovement = false;
-                Debug.Log("[KinectPlayerMovement] Movement detected! Game starting now.");
+                Debug.Log("[KinectPlayerController] Movement detected! Game starting now.");
                 yield break;
             }
             
@@ -117,26 +82,20 @@ public class KinectPlayerMovement : MonoBehaviour
         // Timeout reached, start anyway
         gameStarted = true;
         isWaitingForMovement = false;
-        Debug.Log("[KinectPlayerMovement] Wait timeout reached. Starting game.");
+        Debug.Log("[KinectPlayerController] Wait timeout reached. Starting game.");
     }
 
     private bool DetectKinectMovement()
     {
-        // Check if sensor is ready
         if (sensor == null || !sensor.IsOpen || !sensor.IsAvailable)
             return false;
 
         if (bodyFrameReader == null)
             return false;
 
-        // Try to get a frame - if null, Kinect might still be initializing
         using (var frame = bodyFrameReader.AcquireLatestFrame())
         {
-            if (frame == null) 
-            {
-                // Frame is null - Kinect might still be warming up after restart
-                return false;
-            }
+            if (frame == null) return false;
 
             if (bodies == null)
             {
@@ -145,13 +104,12 @@ public class KinectPlayerMovement : MonoBehaviour
 
             frame.GetAndRefreshBodyData(bodies);
 
-            // Check for any tracked body
             foreach (var body in bodies)
             {
-                if (body == null || !body.IsTracked) continue;
-                
-                // If we detect a tracked body, that means Kinect is working and reading you
-                return true;
+                if (body != null && body.IsTracked)
+                {
+                    return true;
+                }
             }
         }
         return false;
@@ -159,10 +117,8 @@ public class KinectPlayerMovement : MonoBehaviour
 
     void Update()
     {
-        // Don't process movement until game has started (after wait period)
         if (!gameStarted || isWaitingForMovement) return;
 
-        // If auto-walking (to a specific target) is happening
         if (isWalkingToDestination && targetDestination != null)
         {
             WalkToDestination();
@@ -184,7 +140,6 @@ public class KinectPlayerMovement : MonoBehaviour
             Quaternion rotationOffset = Quaternion.Euler(0, 90, 0);
             Quaternion adjustedRotation = userRotation * rotationOffset;
 
-            // Smoothly interpolate to the new rotation
             transform.rotation = Quaternion.Slerp(
                 transform.rotation,
                 adjustedRotation,
@@ -205,9 +160,6 @@ public class KinectPlayerMovement : MonoBehaviour
             animator.SetBool("isRunning", false);
     }
 
-    /// <summary>
-    /// Grabs the rotation from the Kinect spine orientation.
-    /// </summary>
     private Quaternion GetKinectRotation()
     {
         if (bodyFrameReader == null || sensor == null) return Quaternion.identity;
@@ -240,9 +192,6 @@ public class KinectPlayerMovement : MonoBehaviour
         return Quaternion.identity;
     }
 
-    /// <summary>
-    /// Auto-walks the character toward targetDestination if triggered.
-    /// </summary>
     private void WalkToDestination()
     {
         Vector3 direction = (targetDestination.position - transform.position).normalized;
@@ -254,7 +203,6 @@ public class KinectPlayerMovement : MonoBehaviour
 
         animator.SetBool("isRunning", true);
 
-        // Arrived near destination
         if (Vector3.Distance(transform.position, targetDestination.position) < 0.5f)
         {
             isWalkingToDestination = false;
@@ -262,9 +210,6 @@ public class KinectPlayerMovement : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Called by other script when we need to walk automatically to a specific point.
-    /// </summary>
     public void SetDestination(Transform destination)
     {
         targetDestination = destination;
@@ -273,44 +218,16 @@ public class KinectPlayerMovement : MonoBehaviour
 
     void OnDestroy()
     {
-        // PROPER FIX: Don't dispose/close shared Kinect resources from manager
-        if (usingManager)
-        {
-            // Just clear references - manager owns the resources
-            bodyFrameReader = null;
-            sensor = null;
-            bodies = null;
-            Debug.Log("[KinectPlayerMovement] Cleared references (using shared manager resources).");
-        }
-        else
-        {
-            // QUICK FIX: Don't close the sensor on scene reload - this causes power-cycling!
-            // Only dispose the reader (it's recreated on next scene load)
-            if (bodyFrameReader != null)
-            {
-                bodyFrameReader.Dispose();
-                bodyFrameReader = null;
-            }
-
-            // Clear references but DON'T close sensor
-            sensor = null;
-            bodies = null;
-        }
+        // PROPER FIX: Do NOT close the sensor or dispose the reader.
+        // The KinectSensorManager owns these resources.
+        // We just clear our local references.
+        
+        sensor = null;
+        bodyFrameReader = null;
+        bodies = null;
+        
+        Debug.Log("[KinectPlayerController] Destroyed. References cleared. Sensor kept open by Manager.");
     }
-
-    void OnApplicationQuit()
-    {
-        // Only close sensor when application is actually quitting
-        if (bodyFrameReader != null)
-        {
-            bodyFrameReader.Dispose();
-            bodyFrameReader = null;
-        }
-
-        if (sensor != null && sensor.IsOpen)
-        {
-            sensor.Close();
-            sensor = null;
-        }
-    }
+    
+    // OnApplicationQuit is handled by KinectSensorManager
 }

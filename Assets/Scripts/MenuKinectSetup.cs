@@ -40,7 +40,13 @@ public class MenuKinectSetup : MonoBehaviour
         {
             GameObject kmObject = new GameObject("KinectManager");
             kinectManager = kmObject.AddComponent<KinectManager>();
-            Debug.Log("[MenuKinectSetup] Created KinectManager.");
+            DontDestroyOnLoad(kmObject); // Prevent destruction on scene load to avoid closing sensor
+            Debug.Log("[MenuKinectSetup] Created persistent KinectManager.");
+        }
+        else
+        {
+            // Ensure existing manager is also persistent if possible, or at least we found it.
+            DontDestroyOnLoad(kinectManager.gameObject);
         }
 
         // 2. Ensure InteractionManager exists (for hand tracking)

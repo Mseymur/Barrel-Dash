@@ -143,6 +143,11 @@ public class KinectPlayerMovement : MonoBehaviour
     // --- Cleanup Fix ---
     // We removed OnDestroy and OnApplicationQuit from here.
     // The KinectSensorManager handles all cleanup now.
+    void OnDestroy()
+    {
+        // Just clear references
+        bodies = null;
+    }
 
     // --- Auto Walk Logic ---
     private void WalkToDestination()

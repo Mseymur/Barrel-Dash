@@ -15,7 +15,6 @@ public class KinectSensorManager : MonoBehaviour
         {
             if (_instance == null)
             {
-                // Try to find it in the scene first
                 _instance = FindObjectOfType<KinectSensorManager>();
                 
                 if (_instance == null)
@@ -31,15 +30,16 @@ public class KinectSensorManager : MonoBehaviour
 
     private KinectSensor sensor;
     private BodyFrameReader bodyFrameReader;
+    private Body[] bodies;
     
     public bool IsInitialized { get; private set; }
     public bool IsReady { get; private set; }
     public KinectSensor Sensor => sensor;
     public BodyFrameReader BodyFrameReader => bodyFrameReader;
+    public Body[] Bodies => bodies;
 
     void Awake()
     {
-        // Ensure singleton
         if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
@@ -48,13 +48,11 @@ public class KinectSensorManager : MonoBehaviour
         _instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // Initialize Kinect early
         StartCoroutine(InitializeKinect());
     }
 
     private IEnumerator InitializeKinect()
     {
-        // If we already have a sensor from a previous scene, skip init
         if (sensor != null && sensor.IsOpen)
         {
             IsInitialized = true;
@@ -85,12 +83,29 @@ public class KinectSensorManager : MonoBehaviour
             yield return null;
         }
 
-        // Open the reader ONCE here. Player scripts will borrow it.
-        bodyFrameReader = sensor.BodyFrameSource.OpenReader();
+        if (sensor.IsAvailable)
+        {
+             Debug.Log("[KinectSensorManager] Sensor is Available.");
+        }
+        else
+        {
+             Debug.LogWarning("[KinectSensorManager] Sensor is NOT Available after timeout.");
+        }
+
+        // Open the reader ONCE here.
+        if (bodyFrameReader == null)
+        {
+            bodyFrameReader = sensor.BodyFrameSource.OpenReader();
+        }
+
+        if (bodies == null)
+        {
+            bodies = new Body[sensor.BodyFrameSource.BodyCount];
+        }
         
         IsInitialized = true;
         IsReady = true;
-        Debug.Log("[KinectSensorManager] Kinect initialized and ready.");
+        Debug.Log($"[KinectSensorManager] Ready. Sensor Open: {sensor.IsOpen}, Available: {sensor.IsAvailable}");
     }
 
     public IEnumerator WaitForReady()
@@ -101,18 +116,13 @@ public class KinectSensorManager : MonoBehaviour
         }
     }
 
-    // --- THE FIX: Handle Cleanup Correctly ---
-
     void OnDestroy()
     {
-        // Do NOTHING here regarding the sensor.
-        // When the scene changes, this object persists. 
-        // If a duplicate is destroyed, it shouldn't close the sensor.
+        // Do NOT close sensor here. This object persists.
     }
 
     void OnApplicationQuit()
     {
-        // Only close the sensor when the actual application closes.
         if (bodyFrameReader != null)
         {
             bodyFrameReader.Dispose();
@@ -123,6 +133,28 @@ public class KinectSensorManager : MonoBehaviour
         {
             sensor.Close();
             Debug.Log("[KinectSensorManager] Application quitting. Sensor closed.");
+        }
+    }
+    
+    void OnGUI()
+    {
+        // Simple debug overlay
+        if (sensor != null)
+        {
+            GUILayout.BeginArea(new Rect(10, 10, 300, 100));
+            GUILayout.Label($"Sensor Open: {sensor.IsOpen}");
+            GUILayout.Label($"Sensor Available: {sensor.IsAvailable}");
+            
+            int trackedCount = 0;
+            if (bodies != null)
+            {
+                foreach(var b in bodies)
+                {
+                    if(b != null && b.IsTracked) trackedCount++;
+                }
+            }
+            GUILayout.Label($"Tracked Bodies: {trackedCount}");
+            GUILayout.EndArea();
         }
     }
 }
