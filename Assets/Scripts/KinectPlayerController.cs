@@ -36,6 +36,14 @@ public class KinectPlayerController : MonoBehaviour
     {
         Debug.Log("[KinectPlayerController] Waiting for KinectSensorManager...");
 
+        // Disable standard PlayerController to prevent keyboard movement/death while waiting
+        PlayerController standardPlayerController = GetComponent<PlayerController>();
+        if (standardPlayerController != null)
+        {
+            standardPlayerController.enabled = false;
+            Debug.Log("[KinectPlayerController] Disabled standard PlayerController while waiting for Kinect.");
+        }
+
         // Ensure Manager exists
         if (KinectSensorManager.Instance == null)
         {
@@ -47,7 +55,6 @@ public class KinectPlayerController : MonoBehaviour
         yield return KinectSensorManager.Instance.WaitForReady();
 
         // 2. Wait for Sensor to be explicitly OPEN and AVAILABLE
-        // The user reports a power cycle, so we must wait for it to come back online.
         Debug.Log("[KinectPlayerController] Waiting for Sensor to be Available...");
         
         while (KinectSensorManager.Instance.Sensor == null || 
@@ -68,6 +75,15 @@ public class KinectPlayerController : MonoBehaviour
         yield return StartCoroutine(StartCountdown());
 
         Debug.Log("[KinectPlayerController] Linked to KinectSensorManager. Game Starting.");
+
+        // Re-enable standard PlayerController if needed (or keep it disabled if Kinect replaces it)
+        // Assuming we want to enable it for game logic (collecting coins etc) but maybe not movement?
+        // If PlayerController handles movement via keyboard, we might want to keep it disabled or suppress it.
+        // For now, let's enable it but ensure we control the movement.
+        if (standardPlayerController != null)
+        {
+            standardPlayerController.enabled = true;
+        }
 
         // Start waiting for movement detection (or just start if we trust the countdown)
         StartCoroutine(WaitForMovementOrTimeout());
