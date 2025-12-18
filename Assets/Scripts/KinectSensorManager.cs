@@ -6,17 +6,17 @@ using Windows.Kinect;
 /// Persistent singleton that manages Kinect initialization and keeps it open across scenes.
 /// This prevents the delay when switching scenes or restarting the game.
 /// </summary>
-public class KinectManager : MonoBehaviour
+public class KinectSensorManager : MonoBehaviour
 {
-    private static KinectManager _instance;
-    public static KinectManager Instance
+    private static KinectSensorManager _instance;
+    public static KinectSensorManager Instance
     {
         get
         {
             if (_instance == null)
             {
-                GameObject go = new GameObject("KinectManager");
-                _instance = go.AddComponent<KinectManager>();
+                GameObject go = new GameObject("KinectSensorManager");
+                _instance = go.AddComponent<KinectSensorManager>();
                 DontDestroyOnLoad(go);
             }
             return _instance;
@@ -50,7 +50,7 @@ public class KinectManager : MonoBehaviour
 
     private IEnumerator InitializeKinect()
     {
-        Debug.Log("[KinectManager] Starting Kinect initialization...");
+        Debug.Log("[KinectSensorManager] Starting Kinect initialization...");
         IsInitialized = false;
         IsReady = false;
 
@@ -58,7 +58,7 @@ public class KinectManager : MonoBehaviour
         sensor = KinectSensor.GetDefault();
         if (sensor == null)
         {
-            Debug.LogError("[KinectManager] KinectSensor.GetDefault() returned null. Kinect not connected?");
+            Debug.LogError("[KinectSensorManager] KinectSensor.GetDefault() returned null. Kinect not connected?");
             yield break;
         }
 
@@ -66,7 +66,7 @@ public class KinectManager : MonoBehaviour
         if (!sensor.IsOpen)
         {
             sensor.Open();
-            Debug.Log("[KinectManager] Kinect sensor opened. Waiting for availability...");
+            Debug.Log("[KinectSensorManager] Kinect sensor opened. Waiting for availability...");
         }
 
         // Wait for sensor to become available (with timeout)
@@ -78,7 +78,7 @@ public class KinectManager : MonoBehaviour
 
         if (!sensor.IsAvailable)
         {
-            Debug.LogWarning("[KinectManager] Kinect sensor did not become available within timeout period.");
+            Debug.LogWarning("[KinectSensorManager] Kinect sensor did not become available within timeout period.");
             yield break;
         }
 
@@ -91,7 +91,7 @@ public class KinectManager : MonoBehaviour
 
         if (!sensor.IsOpen)
         {
-            Debug.LogWarning("[KinectManager] Kinect sensor did not open within timeout period.");
+            Debug.LogWarning("[KinectSensorManager] Kinect sensor did not open within timeout period.");
             yield break;
         }
 
@@ -101,7 +101,7 @@ public class KinectManager : MonoBehaviour
 
         IsInitialized = true;
         IsReady = true;
-        Debug.Log("[KinectManager] Kinect initialized and ready! Sensor is open: " + sensor.IsOpen + ", Available: " + sensor.IsAvailable);
+        Debug.Log("[KinectSensorManager] Kinect initialized and ready! Sensor is open: " + sensor.IsOpen + ", Available: " + sensor.IsAvailable);
     }
 
     /// <summary>
@@ -114,7 +114,7 @@ public class KinectManager : MonoBehaviour
         {
             yield return new WaitForSeconds(0.1f);
         }
-        Debug.Log("[KinectManager] Kinect is ready!");
+        Debug.Log("[KinectSensorManager] Kinect is ready!");
     }
 
     /// <summary>
@@ -138,14 +138,9 @@ public class KinectManager : MonoBehaviour
         }
     }
 
-    void OnApplicationQuit()
-    {
-        Cleanup();
-    }
-
     private void Cleanup()
     {
-        Debug.Log("[KinectManager] Cleaning up Kinect resources...");
+        Debug.Log("[KinectSensorManager] Cleaning up Kinect resources...");
         
         if (bodyFrameReader != null)
         {
@@ -161,7 +156,7 @@ public class KinectManager : MonoBehaviour
             if (Application.isEditor || !Application.isPlaying)
             {
                 sensor.Close();
-                Debug.Log("[KinectManager] Kinect sensor closed.");
+                Debug.Log("[KinectSensorManager] Kinect sensor closed.");
             }
         }
 
@@ -178,7 +173,7 @@ public class KinectManager : MonoBehaviour
         {
             sensor.Close();
             IsReady = false;
-            Debug.Log("[KinectManager] Kinect sensor manually closed.");
+            Debug.Log("[KinectSensorManager] Kinect sensor manually closed.");
         }
     }
 

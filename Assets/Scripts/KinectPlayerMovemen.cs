@@ -89,8 +89,8 @@ public class KinectPlayerController : MonoBehaviour
 
     private IEnumerator WaitForKinectAndInitialize()
     {
-        // Ensure KinectManager exists and is initializing
-        KinectManager kinectManager = KinectManager.Instance;
+        // Ensure KinectSensorManager exists and is initializing
+        KinectSensorManager kinectManager = KinectSensorManager.Instance;
         
         // Wait for Kinect to be ready
         yield return StartCoroutine(kinectManager.WaitForReady());
@@ -160,7 +160,7 @@ public class KinectPlayerController : MonoBehaviour
 
             if (bodies == null)
             {
-                KinectManager kinectManager = KinectManager.Instance;
+                KinectSensorManager kinectManager = KinectSensorManager.Instance;
                 if (kinectManager != null && kinectManager.Sensor != null)
                 {
                     bodies = new Body[kinectManager.Sensor.BodyFrameSource.BodyCount];
@@ -195,7 +195,7 @@ public class KinectPlayerController : MonoBehaviour
 
     void OnDestroy()
     {
-        // Don't dispose bodyFrameReader or close sensor here - the KinectManager handles that
+        // Don't dispose bodyFrameReader or close sensor here - the KinectSensorManager handles that
         // We just clear our references
         bodyFrameReader = null;
         bodies = null;
