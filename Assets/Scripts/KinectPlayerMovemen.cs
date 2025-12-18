@@ -12,10 +12,10 @@ public class KinectPlayerController : MonoBehaviour
     private float currentRotationY; // To track the current Y rotation
     private float initialRotationY; // To store the initial Y rotation
 
-    private KinectSensor sensor;
+    // Use the singleton KinectManager instead of managing Kinect directly
     private BodyFrameReader bodyFrameReader;
     private Body[] bodies;
-    private bool initialized = false;
+    private bool kinectReady = false;
 
     [Header("Collectibles")]
     public TextMeshProUGUI countText;
@@ -55,16 +55,11 @@ public class KinectPlayerController : MonoBehaviour
 
     void Start()
     {
-        // Initialize Kinect
-        sensor = KinectSensor.GetDefault();
-        if (sensor != null && sensor.IsAvailable)
-        {
-            bodyFrameReader = sensor.BodyFrameSource.OpenReader();
-            sensor.Open();
-        }
-
         controller = GetComponent<CharacterController>();
         animator = GetComponentInChildren<Animator>();
+
+        // Wait for Kinect to be ready using the singleton manager
+        StartCoroutine(WaitForKinectAndInitialize());
 
         // Audio setup
         audioSource = GetComponent<UnityEngine.AudioSource>();
@@ -92,8 +87,27 @@ public class KinectPlayerController : MonoBehaviour
         UpdateCountText();
     }
 
+    private IEnumerator WaitForKinectAndInitialize()
+    {
+        // Ensure KinectManager exists and is initializing
+        KinectManager kinectManager = KinectManager.Instance;
+        
+        // Wait for Kinect to be ready
+        yield return StartCoroutine(kinectManager.WaitForReady());
+        
+        // Get references from the manager
+        bodyFrameReader = kinectManager.BodyFrameReader;
+        bodies = kinectManager.Bodies;
+        kinectReady = true;
+        
+        Debug.Log("[KinectPlayerController] Kinect is ready, player can now move!");
+    }
+
     void Update()
     {
+        // Don't process movement until Kinect is ready
+        if (!kinectReady) return;
+        
         if (isGameOver || hasWon) return;
 
         if (isWalkingToDestination)
@@ -138,7 +152,7 @@ public class KinectPlayerController : MonoBehaviour
 
     private Quaternion GetKinectRotation()
     {
-        if (bodyFrameReader == null) return Quaternion.identity;
+        if (bodyFrameReader == null || !kinectReady) return Quaternion.identity;
 
         using (var frame = bodyFrameReader.AcquireLatestFrame())
         {
@@ -146,7 +160,15 @@ public class KinectPlayerController : MonoBehaviour
 
             if (bodies == null)
             {
-                bodies = new Body[sensor.BodyFrameSource.BodyCount];
+                KinectManager kinectManager = KinectManager.Instance;
+                if (kinectManager != null && kinectManager.Sensor != null)
+                {
+                    bodies = new Body[kinectManager.Sensor.BodyFrameSource.BodyCount];
+                }
+                else
+                {
+                    return Quaternion.identity;
+                }
             }
 
             frame.GetAndRefreshBodyData(bodies);
@@ -163,9 +185,6 @@ public class KinectPlayerController : MonoBehaviour
                     spineOrientation.Orientation.W
                 );
 
-                // Log the rotation for debugging
-                Debug.Log($"Kinect Rotation (Raw): {kinectRotation.eulerAngles}");
-
                 return kinectRotation;
             }
         }
@@ -176,17 +195,11 @@ public class KinectPlayerController : MonoBehaviour
 
     void OnDestroy()
     {
-        if (bodyFrameReader != null)
-        {
-            bodyFrameReader.Dispose();
-            bodyFrameReader = null;
-        }
-
-        if (sensor != null && sensor.IsOpen)
-        {
-            sensor.Close();
-            sensor = null;
-        }
+        // Don't dispose bodyFrameReader or close sensor here - the KinectManager handles that
+        // We just clear our references
+        bodyFrameReader = null;
+        bodies = null;
+        kinectReady = false;
     }
 
     void WalkToDestination()

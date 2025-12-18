@@ -12,10 +12,10 @@ public class KinectPlayerMovement : MonoBehaviour
     private CharacterController controller;
     private Animator animator;
 
-    // Kinect references
-    private KinectSensor sensor;
+    // Use the singleton KinectManager instead of managing Kinect directly
     private BodyFrameReader bodyFrameReader;
     private Body[] bodies;
+    private bool kinectReady = false;
 
     // Destination walking
     private bool isWalkingToDestination = false;
@@ -23,31 +23,33 @@ public class KinectPlayerMovement : MonoBehaviour
 
     void Start()
     {
-        // Initialize Kinect
-        sensor = KinectSensor.GetDefault();
-        if (sensor != null)
-        {
-            // Open the sensor as soon as possible. IsAvailable becomes true *after* Open(),
-            // so do NOT gate opening on IsAvailable being true.
-            if (!sensor.IsOpen)
-            {
-                sensor.Open();
-            }
-
-            bodyFrameReader = sensor.BodyFrameSource.OpenReader();
-            Debug.Log("[KinectPlayerMovement] Kinect sensor opened and BodyFrameReader created.");
-        }
-        else
-        {
-            Debug.LogWarning("[KinectPlayerMovement] KinectSensor.GetDefault() returned null. Kinect not connected?");
-        }
-
         controller = GetComponent<CharacterController>();
         animator  = GetComponentInChildren<Animator>();
+
+        // Wait for Kinect to be ready using the singleton manager
+        StartCoroutine(WaitForKinectAndInitialize());
+    }
+
+    private IEnumerator WaitForKinectAndInitialize()
+    {
+        // Ensure KinectManager exists and is initializing
+        KinectManager kinectManager = KinectManager.Instance;
+        
+        // Wait for Kinect to be ready
+        yield return StartCoroutine(kinectManager.WaitForReady());
+        
+        // Get references from the manager
+        bodyFrameReader = kinectManager.BodyFrameReader;
+        bodies = kinectManager.Bodies;
+        kinectReady = true;
+        
+        Debug.Log("[KinectPlayerMovement] Kinect is ready, player can now move!");
     }
 
     void Update()
     {
+        // Don't process movement until Kinect is ready
+        if (!kinectReady) return;
 
         // If auto-walking (to a specific target) is happening
         if (isWalkingToDestination && targetDestination != null)
@@ -97,7 +99,7 @@ public class KinectPlayerMovement : MonoBehaviour
     /// </summary>
     private Quaternion GetKinectRotation()
     {
-        if (bodyFrameReader == null) return Quaternion.identity;
+        if (bodyFrameReader == null || !kinectReady) return Quaternion.identity;
 
         using (var frame = bodyFrameReader.AcquireLatestFrame())
         {
@@ -105,7 +107,15 @@ public class KinectPlayerMovement : MonoBehaviour
 
             if (bodies == null)
             {
-                bodies = new Body[sensor.BodyFrameSource.BodyCount];
+                KinectManager kinectManager = KinectManager.Instance;
+                if (kinectManager != null && kinectManager.Sensor != null)
+                {
+                    bodies = new Body[kinectManager.Sensor.BodyFrameSource.BodyCount];
+                }
+                else
+                {
+                    return Quaternion.identity;
+                }
             }
 
             frame.GetAndRefreshBodyData(bodies);
@@ -160,19 +170,10 @@ public class KinectPlayerMovement : MonoBehaviour
 
     void OnDestroy()
     {
-        if (bodyFrameReader != null)
-        {
-            bodyFrameReader.Dispose();
-            bodyFrameReader = null;
-        }
-
-        // Optionally keep the sensor open between scene loads.
-        // If you prefer the Kinect to stay warm across scenes, comment out the block below.
-        if (sensor != null && sensor.IsOpen)
-        {
-            sensor.Close();
-            sensor = null;
-            Debug.Log("[KinectPlayerMovement] Kinect sensor closed on destroy.");
-        }
+        // Don't dispose bodyFrameReader or close sensor here - the KinectManager handles that
+        // We just clear our references
+        bodyFrameReader = null;
+        bodies = null;
+        kinectReady = false;
     }
 }
