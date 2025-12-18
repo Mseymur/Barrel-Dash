@@ -43,18 +43,46 @@ public class KinectPlayerController : MonoBehaviour
             yield break;
         }
 
-        // Wait for the persistent sensor to be ready
+        // 1. Wait for Manager to be initialized
         yield return KinectSensorManager.Instance.WaitForReady();
+
+        // 2. Wait for Sensor to be explicitly OPEN and AVAILABLE
+        // The user reports a power cycle, so we must wait for it to come back online.
+        Debug.Log("[KinectPlayerController] Waiting for Sensor to be Available...");
+        
+        while (KinectSensorManager.Instance.Sensor == null || 
+               !KinectSensorManager.Instance.Sensor.IsOpen || 
+               !KinectSensorManager.Instance.Sensor.IsAvailable)
+        {
+            yield return null;
+        }
 
         // Get references from the manager (shared resources)
         sensor = KinectSensorManager.Instance.Sensor;
         bodyFrameReader = KinectSensorManager.Instance.BodyFrameReader;
         bodies = KinectSensorManager.Instance.Bodies;
 
-        Debug.Log("[KinectPlayerController] Linked to KinectSensorManager.");
+        Debug.Log("[KinectPlayerController] Sensor is ready. Starting Countdown...");
 
-        // Start waiting for movement detection
+        // 3. Countdown (Safety buffer to ensure tracking is stable)
+        yield return StartCoroutine(StartCountdown());
+
+        Debug.Log("[KinectPlayerController] Linked to KinectSensorManager. Game Starting.");
+
+        // Start waiting for movement detection (or just start if we trust the countdown)
         StartCoroutine(WaitForMovementOrTimeout());
+    }
+
+    private IEnumerator StartCountdown()
+    {
+        // Simple countdown to let the sensor settle
+        float countdown = 4f;
+        while (countdown > 0)
+        {
+            Debug.Log($"[KinectPlayerController] Game starting in {Mathf.Ceil(countdown)}...");
+            countdown -= Time.deltaTime;
+            yield return null;
+        }
     }
 
     private IEnumerator WaitForMovementOrTimeout()
@@ -230,4 +258,28 @@ public class KinectPlayerController : MonoBehaviour
     }
     
     // OnApplicationQuit is handled by KinectSensorManager
+    
+    private string statusMessage = "";
+
+    void OnGUI()
+    {
+        if (!gameStarted)
+        {
+            GUIStyle style = new GUIStyle();
+            style.fontSize = 40;
+            style.normal.textColor = Color.red;
+            style.alignment = TextAnchor.MiddleCenter;
+            
+            string msg = "Initializing Kinect...";
+            if (KinectSensorManager.Instance != null && KinectSensorManager.Instance.Sensor != null)
+            {
+                if (!KinectSensorManager.Instance.Sensor.IsAvailable)
+                    msg = "Waiting for Kinect Sensor... (Please Wait)";
+                else
+                    msg = "Kinect Ready! Starting...";
+            }
+            
+            GUI.Label(new Rect(0, 0, Screen.width, Screen.height), msg, style);
+        }
+    }
 }

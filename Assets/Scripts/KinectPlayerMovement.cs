@@ -42,6 +42,14 @@ public class KinectPlayerMovement : MonoBehaviour
         // Wait for the persistent sensor to be ready
         yield return KinectSensorManager.Instance.WaitForReady();
 
+        // Wait for Sensor to be explicitly OPEN and AVAILABLE
+        while (KinectSensorManager.Instance.Sensor == null || 
+               !KinectSensorManager.Instance.Sensor.IsOpen || 
+               !KinectSensorManager.Instance.Sensor.IsAvailable)
+        {
+            yield return null;
+        }
+
         // Initialize local body array based on the sensor specs
         if (KinectSensorManager.Instance.Sensor != null)
         {
