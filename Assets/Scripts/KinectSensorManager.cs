@@ -138,6 +138,12 @@ public class KinectSensorManager : MonoBehaviour
         }
     }
 
+    void OnApplicationQuit()
+    {
+        // Ensure sensor is closed when application quits
+        Cleanup();
+    }
+
     private void Cleanup()
     {
         Debug.Log("[KinectSensorManager] Cleaning up Kinect resources...");
@@ -148,16 +154,11 @@ public class KinectSensorManager : MonoBehaviour
             bodyFrameReader = null;
         }
 
-        // Note: We intentionally DON'T close the sensor here to keep it warm across scenes
-        // The sensor will be closed when the application quits
+        // Close sensor only when application is quitting (not on scene changes)
         if (sensor != null && sensor.IsOpen)
         {
-            // Only close on application quit, not on scene changes
-            if (Application.isEditor || !Application.isPlaying)
-            {
-                sensor.Close();
-                Debug.Log("[KinectSensorManager] Kinect sensor closed.");
-            }
+            sensor.Close();
+            Debug.Log("[KinectSensorManager] Kinect sensor closed.");
         }
 
         IsInitialized = false;

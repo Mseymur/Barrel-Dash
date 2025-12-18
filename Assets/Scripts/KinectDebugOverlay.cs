@@ -90,8 +90,20 @@ public class KinectDebugOverlay : MonoBehaviour
             }
         }
 
+        // Check if using KinectSensorManager
+        bool usingManager = KinectSensorManager.Instance != null && KinectSensorManager.Instance.IsReady;
+
         // Build status string
         string status = "=== KINECT STATUS ===\n";
+        
+        if (usingManager)
+        {
+            status += "Manager: KinectSensorManager (persistent)\n";
+        }
+        else
+        {
+            status += "Manager: Direct access\n";
+        }
         
         if (sensor == null)
         {
@@ -114,6 +126,17 @@ public class KinectDebugOverlay : MonoBehaviour
         }
 
         status += $"Tracked Bodies: {trackedBodiesCount}\n";
+        
+        // Show frame acquisition status
+        bool gotFrame = false;
+        if (bodyFrameReader != null && sensor != null && sensor.IsOpen)
+        {
+            using (var testFrame = bodyFrameReader.AcquireLatestFrame())
+            {
+                gotFrame = (testFrame != null);
+            }
+        }
+        status += $"Frames Available: {(gotFrame ? "YES" : "NO")}\n";
 
         // Status indicator
         if (sensor != null && sensor.IsOpen && sensor.IsAvailable && trackedBodiesCount > 0)

@@ -18,6 +18,7 @@ public class KinectPlayerMovement : MonoBehaviour
     private Body[] bodies;
     private bool gameStarted = false;
     private bool isWaitingForMovement = true;
+    private bool usingManager = false; // Track if using KinectSensorManager
 
     // Destination walking
     private bool isWalkingToDestination = false;
@@ -28,13 +29,43 @@ public class KinectPlayerMovement : MonoBehaviour
         controller = GetComponent<CharacterController>();
         animator  = GetComponentInChildren<Animator>();
 
-        // Initialize Kinect
+        // PROPER FIX: Initialize from persistent manager (prevents power-cycling)
+        // Uncomment the line below to use the manager, or keep direct initialization
+        // StartCoroutine(InitFromManager());
+        
+        // Quick fix: Direct initialization (sensor stays open, but creates new reader)
         InitializeKinect();
 
         // Start waiting for movement detection
         StartCoroutine(WaitForMovementOrTimeout());
     }
 
+    /// <summary>
+    /// PROPER FIX: Initialize from persistent KinectSensorManager.
+    /// Use this instead of InitializeKinect() for best results.
+    /// </summary>
+    private IEnumerator InitFromManager()
+    {
+        // Wait for KinectSensorManager to be ready
+        yield return KinectSensorManager.Instance.WaitForReady();
+
+        // Get references from the manager (shared resources)
+        sensor = KinectSensorManager.Instance.Sensor;
+        bodyFrameReader = KinectSensorManager.Instance.BodyFrameReader;
+        bodies = KinectSensorManager.Instance.Bodies;
+        usingManager = true;
+
+        Debug.Log("[KinectPlayerMovement] Using KinectSensorManager (persistent). Sensor open: " + 
+                  (sensor != null ? sensor.IsOpen.ToString() : "null") + 
+                  ", Available: " + (sensor != null ? sensor.IsAvailable.ToString() : "null"));
+
+        // Start waiting for movement detection
+        StartCoroutine(WaitForMovementOrTimeout());
+    }
+
+    /// <summary>
+    /// QUICK FIX: Direct initialization (sensor stays open, but creates new reader per scene).
+    /// </summary>
     private void InitializeKinect()
     {
         sensor = KinectSensor.GetDefault();
@@ -242,17 +273,29 @@ public class KinectPlayerMovement : MonoBehaviour
 
     void OnDestroy()
     {
-        // Don't close the sensor on scene reload - this causes power-cycling!
-        // Only dispose the reader (it's recreated on next scene load)
-        if (bodyFrameReader != null)
+        // PROPER FIX: Don't dispose/close shared Kinect resources from manager
+        if (usingManager)
         {
-            bodyFrameReader.Dispose();
+            // Just clear references - manager owns the resources
             bodyFrameReader = null;
+            sensor = null;
+            bodies = null;
+            Debug.Log("[KinectPlayerMovement] Cleared references (using shared manager resources).");
         }
+        else
+        {
+            // QUICK FIX: Don't close the sensor on scene reload - this causes power-cycling!
+            // Only dispose the reader (it's recreated on next scene load)
+            if (bodyFrameReader != null)
+            {
+                bodyFrameReader.Dispose();
+                bodyFrameReader = null;
+            }
 
-        // Clear references but DON'T close sensor
-        sensor = null;
-        bodies = null;
+            // Clear references but DON'T close sensor
+            sensor = null;
+            bodies = null;
+        }
     }
 
     void OnApplicationQuit()
