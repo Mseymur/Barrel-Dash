@@ -40,13 +40,20 @@ public class KinectPlayerMovement : MonoBehaviour
         sensor = KinectSensor.GetDefault();
         if (sensor != null)
         {
+            // If sensor is already open (from previous scene), reuse it
             if (!sensor.IsOpen)
             {
                 sensor.Open();
+                Debug.Log("[KinectPlayerMovement] Kinect sensor opened.");
             }
+            else
+            {
+                Debug.Log("[KinectPlayerMovement] Kinect sensor already open (reusing from previous scene).");
+            }
+            
             bodyFrameReader = sensor.BodyFrameSource.OpenReader();
             bodies = new Body[sensor.BodyFrameSource.BodyCount];
-            Debug.Log("[KinectPlayerMovement] Kinect initialized.");
+            Debug.Log("[KinectPlayerMovement] Kinect initialized. Sensor open: " + sensor.IsOpen + ", Available: " + sensor.IsAvailable);
         }
         else
         {
@@ -84,12 +91,21 @@ public class KinectPlayerMovement : MonoBehaviour
 
     private bool DetectKinectMovement()
     {
-        if (bodyFrameReader == null || sensor == null || !sensor.IsOpen || !sensor.IsAvailable)
+        // Check if sensor is ready
+        if (sensor == null || !sensor.IsOpen || !sensor.IsAvailable)
             return false;
 
+        if (bodyFrameReader == null)
+            return false;
+
+        // Try to get a frame - if null, Kinect might still be initializing
         using (var frame = bodyFrameReader.AcquireLatestFrame())
         {
-            if (frame == null) return false;
+            if (frame == null) 
+            {
+                // Frame is null - Kinect might still be warming up after restart
+                return false;
+            }
 
             if (bodies == null)
             {
@@ -98,11 +114,12 @@ public class KinectPlayerMovement : MonoBehaviour
 
             frame.GetAndRefreshBodyData(bodies);
 
+            // Check for any tracked body
             foreach (var body in bodies)
             {
                 if (body == null || !body.IsTracked) continue;
                 
-                // If we detect a tracked body, that means Kinect is working
+                // If we detect a tracked body, that means Kinect is working and reading you
                 return true;
             }
         }
@@ -225,6 +242,22 @@ public class KinectPlayerMovement : MonoBehaviour
 
     void OnDestroy()
     {
+        // Don't close the sensor on scene reload - this causes power-cycling!
+        // Only dispose the reader (it's recreated on next scene load)
+        if (bodyFrameReader != null)
+        {
+            bodyFrameReader.Dispose();
+            bodyFrameReader = null;
+        }
+
+        // Clear references but DON'T close sensor
+        sensor = null;
+        bodies = null;
+    }
+
+    void OnApplicationQuit()
+    {
+        // Only close sensor when application is actually quitting
         if (bodyFrameReader != null)
         {
             bodyFrameReader.Dispose();
