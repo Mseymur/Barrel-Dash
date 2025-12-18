@@ -25,10 +25,21 @@ public class KinectPlayerMovement : MonoBehaviour
     {
         // Initialize Kinect
         sensor = KinectSensor.GetDefault();
-        if (sensor != null && sensor.IsAvailable)
+        if (sensor != null)
         {
+            // Open the sensor as soon as possible. IsAvailable becomes true *after* Open(),
+            // so do NOT gate opening on IsAvailable being true.
+            if (!sensor.IsOpen)
+            {
+                sensor.Open();
+            }
+
             bodyFrameReader = sensor.BodyFrameSource.OpenReader();
-            sensor.Open();
+            Debug.Log("[KinectPlayerMovement] Kinect sensor opened and BodyFrameReader created.");
+        }
+        else
+        {
+            Debug.LogWarning("[KinectPlayerMovement] KinectSensor.GetDefault() returned null. Kinect not connected?");
         }
 
         controller = GetComponent<CharacterController>();
@@ -155,10 +166,13 @@ public class KinectPlayerMovement : MonoBehaviour
             bodyFrameReader = null;
         }
 
+        // Optionally keep the sensor open between scene loads.
+        // If you prefer the Kinect to stay warm across scenes, comment out the block below.
         if (sensor != null && sensor.IsOpen)
         {
             sensor.Close();
             sensor = null;
+            Debug.Log("[KinectPlayerMovement] Kinect sensor closed on destroy.");
         }
     }
 }
