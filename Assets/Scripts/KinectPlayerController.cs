@@ -62,39 +62,27 @@ public class KinectPlayerController : MonoBehaviour
         // 1. Wait for Manager to be initialized
         yield return KinectSensorManager.Instance.WaitForReady();
 
+        // 2. Wait for Sensor to be explicitly OPEN and AVAILABLE
+        Debug.Log("[KinectPlayerController] Waiting for Sensor to be Available...");
+        
+        while (KinectSensorManager.Instance.Sensor == null || 
+               !KinectSensorManager.Instance.Sensor.IsOpen || 
+               !KinectSensorManager.Instance.Sensor.IsAvailable)
+        {
+            yield return null;
+        }
+
         // Get references from the manager (shared resources)
         sensor = KinectSensorManager.Instance.Sensor;
         bodyFrameReader = KinectSensorManager.Instance.BodyFrameReader;
         bodies = KinectSensorManager.Instance.Bodies;
 
-        // 2. Hard Wait (4 seconds) to let sensor power cycle/settle
-        float initialWait = 4f;
-        while (initialWait > 0)
-        {
-            statusMessage = $"Initializing Kinect... {Mathf.Ceil(initialWait)}";
-            initialWait -= Time.deltaTime;
-            yield return null;
-        }
+        Debug.Log("[KinectPlayerController] Sensor is ready. Starting Countdown...");
 
-        // 3. Wait for ACTUAL BODY TRACKING
-        Debug.Log("[KinectPlayerController] Waiting for Body Tracking...");
-        statusMessage = "Please stand in front of Kinect...";
-        
-        while (true)
-        {
-            if (DetectKinectMovement())
-            {
-                Debug.Log("[KinectPlayerController] Body Detected! Starting Game.");
-                statusMessage = "Player Detected! GO!";
-                break;
-            }
-            yield return null;
-        }
+        // 3. Countdown (Safety buffer to ensure tracking is stable)
+        yield return StartCoroutine(StartCountdown());
 
-        // Short pause to show "GO!"
-        yield return new WaitForSeconds(1f);
-
-        Debug.Log("[KinectPlayerController] Game Starting.");
+        Debug.Log("[KinectPlayerController] Linked to KinectSensorManager. Game Starting.");
 
         // Re-enable standard PlayerController if needed
         if (standardPlayerController != null)
@@ -108,11 +96,49 @@ public class KinectPlayerController : MonoBehaviour
             standardPlayerMovement.enabled = true;
         }
 
-        gameStarted = true;
-        isWaitingForMovement = false;
+        // Start waiting for movement detection (or just start if we trust the countdown)
+        StartCoroutine(WaitForMovementOrTimeout());
     }
 
-    // Removed StartCountdown and WaitForMovementOrTimeout as they are replaced by the logic above
+    private IEnumerator StartCountdown()
+    {
+        // Simple countdown to let the sensor settle
+        float countdown = 4f;
+        while (countdown > 0)
+        {
+            Debug.Log($"[KinectPlayerController] Game starting in {Mathf.Ceil(countdown)}...");
+            countdown -= Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    private IEnumerator WaitForMovementOrTimeout()
+    {
+        float waitTime = 5f; // 5 seconds max wait
+        float elapsed = 0f;
+        
+        Debug.Log("[KinectPlayerController] Waiting for Kinect movement detection (max 5 seconds)...");
+        
+        while (elapsed < waitTime && !gameStarted)
+        {
+            // Check if Kinect detects any body movement
+            if (DetectKinectMovement())
+            {
+                gameStarted = true;
+                isWaitingForMovement = false;
+                Debug.Log("[KinectPlayerController] Movement detected! Game starting now.");
+                yield break;
+            }
+            
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+        
+        // Timeout reached, start anyway
+        gameStarted = true;
+        isWaitingForMovement = false;
+        Debug.Log("[KinectPlayerController] Wait timeout reached. Starting game.");
+    }
 
     private bool DetectKinectMovement()
     {
