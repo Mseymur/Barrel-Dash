@@ -4,7 +4,7 @@ using Windows.Kinect;
 
 /// <summary>
 /// Persistent singleton that manages Kinect initialization and keeps it open across scenes.
-/// This prevents the delay when switching scenes or restarting the game.
+/// Fixes the power-cycle issue by owning the Sensor lifetime.
 /// </summary>
 public class KinectSensorManager : MonoBehaviour
 {
@@ -15,9 +15,15 @@ public class KinectSensorManager : MonoBehaviour
         {
             if (_instance == null)
             {
-                GameObject go = new GameObject("KinectSensorManager");
-                _instance = go.AddComponent<KinectSensorManager>();
-                DontDestroyOnLoad(go);
+                // Try to find it in the scene first
+                _instance = FindObjectOfType<KinectSensorManager>();
+                
+                if (_instance == null)
+                {
+                    GameObject go = new GameObject("KinectSensorManager");
+                    _instance = go.AddComponent<KinectSensorManager>();
+                    DontDestroyOnLoad(go);
+                }
             }
             return _instance;
         }
@@ -25,13 +31,11 @@ public class KinectSensorManager : MonoBehaviour
 
     private KinectSensor sensor;
     private BodyFrameReader bodyFrameReader;
-    private Body[] bodies;
     
     public bool IsInitialized { get; private set; }
     public bool IsReady { get; private set; }
     public KinectSensor Sensor => sensor;
     public BodyFrameReader BodyFrameReader => bodyFrameReader;
-    public Body[] Bodies => bodies;
 
     void Awake()
     {
@@ -50,141 +54,75 @@ public class KinectSensorManager : MonoBehaviour
 
     private IEnumerator InitializeKinect()
     {
+        // If we already have a sensor from a previous scene, skip init
+        if (sensor != null && sensor.IsOpen)
+        {
+            IsInitialized = true;
+            IsReady = true;
+            yield break;
+        }
+
         Debug.Log("[KinectSensorManager] Starting Kinect initialization...");
         IsInitialized = false;
         IsReady = false;
 
-        // Get the sensor
         sensor = KinectSensor.GetDefault();
         if (sensor == null)
         {
-            Debug.LogError("[KinectSensorManager] KinectSensor.GetDefault() returned null. Kinect not connected?");
+            Debug.LogError("[KinectSensorManager] KinectSensor.GetDefault() returned null.");
             yield break;
         }
 
-        // Open the sensor first (IsAvailable becomes true AFTER Open())
         if (!sensor.IsOpen)
         {
             sensor.Open();
-            Debug.Log("[KinectSensorManager] Kinect sensor opened. Waiting for availability...");
         }
 
-        // Wait for sensor to become available (with timeout)
-        float waitTime = Time.realtimeSinceStartup + 5f; // 5 second timeout
+        // Wait for sensor to be available
+        float waitTime = Time.realtimeSinceStartup + 5f;
         while (!sensor.IsAvailable && Time.realtimeSinceStartup < waitTime)
         {
-            yield return new WaitForSeconds(0.1f);
+            yield return null;
         }
 
-        if (!sensor.IsAvailable)
-        {
-            Debug.LogWarning("[KinectSensorManager] Kinect sensor did not become available within timeout period.");
-            yield break;
-        }
-
-        // Wait for sensor to be fully open
-        waitTime = Time.realtimeSinceStartup + 3f;
-        while (!sensor.IsOpen && Time.realtimeSinceStartup < waitTime)
-        {
-            yield return new WaitForSeconds(0.1f);
-        }
-
-        if (!sensor.IsOpen)
-        {
-            Debug.LogWarning("[KinectSensorManager] Kinect sensor did not open within timeout period.");
-            yield break;
-        }
-
-        // Create body frame reader
+        // Open the reader ONCE here. Player scripts will borrow it.
         bodyFrameReader = sensor.BodyFrameSource.OpenReader();
-        bodies = new Body[sensor.BodyFrameSource.BodyCount];
-
+        
         IsInitialized = true;
         IsReady = true;
-        Debug.Log("[KinectSensorManager] Kinect initialized and ready! Sensor is open: " + sensor.IsOpen + ", Available: " + sensor.IsAvailable);
+        Debug.Log("[KinectSensorManager] Kinect initialized and ready.");
     }
 
-    /// <summary>
-    /// Wait for Kinect to be ready before proceeding.
-    /// Use this in Start() methods that depend on Kinect.
-    /// </summary>
     public IEnumerator WaitForReady()
     {
         while (!IsReady)
         {
-            yield return new WaitForSeconds(0.1f);
+            yield return null;
         }
-        Debug.Log("[KinectSensorManager] Kinect is ready!");
     }
 
-    /// <summary>
-    /// Check if Kinect is ready (non-coroutine version for Update loops)
-    /// </summary>
-    public bool CheckReady()
-    {
-        if (!IsInitialized || sensor == null || !sensor.IsOpen || !sensor.IsAvailable)
-        {
-            return false;
-        }
-        return IsReady;
-    }
+    // --- THE FIX: Handle Cleanup Correctly ---
 
     void OnDestroy()
     {
-        // Only close if this is the actual instance being destroyed
-        if (_instance == this)
-        {
-            Cleanup();
-        }
+        // Do NOTHING here regarding the sensor.
+        // When the scene changes, this object persists. 
+        // If a duplicate is destroyed, it shouldn't close the sensor.
     }
 
     void OnApplicationQuit()
     {
-        // Ensure sensor is closed when application quits
-        Cleanup();
-    }
-
-    private void Cleanup()
-    {
-        Debug.Log("[KinectSensorManager] Cleaning up Kinect resources...");
-        
+        // Only close the sensor when the actual application closes.
         if (bodyFrameReader != null)
         {
             bodyFrameReader.Dispose();
             bodyFrameReader = null;
         }
 
-        // Close sensor only when application is quitting (not on scene changes)
         if (sensor != null && sensor.IsOpen)
         {
             sensor.Close();
-            Debug.Log("[KinectSensorManager] Kinect sensor closed.");
+            Debug.Log("[KinectSensorManager] Application quitting. Sensor closed.");
         }
-
-        IsInitialized = false;
-        IsReady = false;
-    }
-
-    /// <summary>
-    /// Manually close the sensor (use sparingly, only when absolutely necessary)
-    /// </summary>
-    public void CloseSensor()
-    {
-        if (sensor != null && sensor.IsOpen)
-        {
-            sensor.Close();
-            IsReady = false;
-            Debug.Log("[KinectSensorManager] Kinect sensor manually closed.");
-        }
-    }
-
-    /// <summary>
-    /// Reinitialize the Kinect (useful if connection was lost)
-    /// </summary>
-    public void Reinitialize()
-    {
-        Cleanup();
-        StartCoroutine(InitializeKinect());
     }
 }
-

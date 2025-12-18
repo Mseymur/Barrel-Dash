@@ -1,348 +1,153 @@
 using System.Collections;
 using UnityEngine;
-using TMPro;
 using Windows.Kinect;
 
-public class KinectPlayerController : MonoBehaviour
+[RequireComponent(typeof(CharacterController))]
+public class KinectPlayerMovement : MonoBehaviour
 {
+    [Header("Movement Settings")]
     public float moveSpeed = 5f;
     public float rotationSpeed = 200f;
+
     private CharacterController controller;
     private Animator animator;
-    private float currentRotationY; // To track the current Y rotation
-    private float initialRotationY; // To store the initial Y rotation
 
-    // Kinect references
-    private KinectSensor sensor;
-    private BodyFrameReader bodyFrameReader;
+    // We store bodies locally to process data, but we get the data from the Manager
     private Body[] bodies;
+    
     private bool gameStarted = false;
-    private bool isWaitingForMovement = true;
-    private bool usingManager = false; // Track if using KinectSensorManager
-
-    [Header("Collectibles")]
-    public TextMeshProUGUI countText;
-    private int count = 0;
-    private int maxCount = 0;
-
-    private bool isGameOver = false;
-    private bool hasWon = false;
     private bool isWalkingToDestination = false;
-
-    public Transform targetDestination;
-    public string triggerTag = "NoSpawn";
-
-    [Header("Barrel Spawner")]
-    public BarrelSpawner barrelSpawner;
-
-    [Header("Win Settings")]
-    public Transform winPoint;
-
-    [Header("UI Settings")]
-    public GameObject gameOverCanvas;
-    public GameObject winCanvas;
-    public TextMeshProUGUI gameOverText;
-    public TextMeshProUGUI winText;
-
-    [Header("Camera Settings")]
-    public Camera mainCamera;             // The camera following the character (drag your Main Camera here)
-    public Camera finaleCamera;           // The camera for the finale animation (drag the Finale Camera here)
-    public float cameraTransitionDuration = 2f; // Smooth transition duration in seconds
-
-    [Header("Audio Settings")]
-    public AudioClip backgroundMusic;  
-    public AudioClip coinSound;        
-    public AudioClip deathSound;      
-    public AudioClip winSound;        
-    private UnityEngine.AudioSource audioSource;   // Fixed namespace conflict
+    private Transform targetDestination;
 
     void Start()
     {
         controller = GetComponent<CharacterController>();
         animator = GetComponentInChildren<Animator>();
 
-        // PROPER FIX: Initialize from persistent manager (prevents power-cycling)
-        // Uncomment the line below to use the manager, or keep direct initialization
-        // StartCoroutine(InitFromManager());
-        
-        // Quick fix: Direct initialization (sensor stays open, but creates new reader)
-        InitializeKinect();
-
-        // Audio setup
-        audioSource = GetComponent<UnityEngine.AudioSource>();
-        if (audioSource == null)
-        {
-            audioSource = gameObject.AddComponent<UnityEngine.AudioSource>();
-        }
-
-        // Play background music
-        audioSource.clip = backgroundMusic;
-        audioSource.loop = true;
-        audioSource.Play();
-
-        maxCount = GameObject.FindGameObjectsWithTag("Money").Length;
-        Debug.Log($"Game Started! Total Money to Collect: {maxCount}");
-
-        // Ensure only the Game UI Canvas is active at the start
-        if (gameOverCanvas) gameOverCanvas.SetActive(false);
-        if (winCanvas) winCanvas.SetActive(false);
-
-        // Ensure only the main camera is active at the start
-        if (mainCamera) mainCamera.enabled = true;
-        if (finaleCamera) finaleCamera.enabled = false;
-
-        UpdateCountText();
-
-        // Start waiting for movement detection
-        StartCoroutine(WaitForMovementOrTimeout());
+        // Start the connection routine
+        StartCoroutine(StartWithManager());
     }
 
-    /// <summary>
-    /// PROPER FIX: Initialize from persistent KinectSensorManager.
-    /// Use this instead of InitializeKinect() for best results.
-    /// </summary>
-    private IEnumerator InitFromManager()
+    private IEnumerator StartWithManager()
     {
-        // Wait for KinectSensorManager to be ready
+        Debug.Log("[KinectPlayerMovement] Waiting for KinectSensorManager...");
+
+        // Ensure Manager exists
+        if (KinectSensorManager.Instance == null)
+        {
+            Debug.LogError("No KinectSensorManager found! Make sure it is in the scene.");
+            yield break;
+        }
+
+        // Wait for the persistent sensor to be ready
         yield return KinectSensorManager.Instance.WaitForReady();
 
-        // Get references from the manager (shared resources)
-        sensor = KinectSensorManager.Instance.Sensor;
-        bodyFrameReader = KinectSensorManager.Instance.BodyFrameReader;
-        bodies = KinectSensorManager.Instance.Bodies;
-        usingManager = true;
-
-        Debug.Log("[KinectPlayerController] Using KinectSensorManager (persistent). Sensor open: " + 
-                  (sensor != null ? sensor.IsOpen.ToString() : "null") + 
-                  ", Available: " + (sensor != null ? sensor.IsAvailable.ToString() : "null"));
-
-        // Start waiting for movement detection
-        StartCoroutine(WaitForMovementOrTimeout());
-    }
-
-    /// <summary>
-    /// QUICK FIX: Direct initialization (sensor stays open, but creates new reader per scene).
-    /// </summary>
-    private void InitializeKinect()
-    {
-        sensor = KinectSensor.GetDefault();
-        if (sensor != null)
+        // Initialize local body array based on the sensor specs
+        if (KinectSensorManager.Instance.Sensor != null)
         {
-            // If sensor is already open (from previous scene), reuse it
-            if (!sensor.IsOpen)
-            {
-                sensor.Open();
-                Debug.Log("[KinectPlayerController] Kinect sensor opened.");
-            }
-            else
-            {
-                Debug.Log("[KinectPlayerController] Kinect sensor already open (reusing from previous scene).");
-            }
-            
-            bodyFrameReader = sensor.BodyFrameSource.OpenReader();
-            bodies = new Body[sensor.BodyFrameSource.BodyCount];
-            Debug.Log("[KinectPlayerController] Kinect initialized. Sensor open: " + sensor.IsOpen + ", Available: " + sensor.IsAvailable);
-        }
-        else
-        {
-            Debug.LogWarning("[KinectPlayerController] KinectSensor.GetDefault() returned null. Kinect not connected?");
-        }
-    }
-
-    private IEnumerator WaitForMovementOrTimeout()
-    {
-        float waitTime = 5f; // 5 seconds max wait
-        float elapsed = 0f;
-        
-        Debug.Log("[KinectPlayerController] Waiting for Kinect movement detection (max 5 seconds)...");
-        
-        while (elapsed < waitTime && !gameStarted)
-        {
-            // Check if Kinect detects any body movement
-            if (DetectKinectMovement())
-            {
-                gameStarted = true;
-                isWaitingForMovement = false;
-                Debug.Log("[KinectPlayerController] Movement detected! Game starting now.");
-                yield break;
-            }
-            
-            elapsed += Time.deltaTime;
-            yield return null;
+            bodies = new Body[KinectSensorManager.Instance.Sensor.BodyFrameSource.BodyCount];
         }
         
-        // Timeout reached, start anyway
         gameStarted = true;
-        isWaitingForMovement = false;
-        Debug.Log("[KinectPlayerController] Wait timeout reached. Starting game.");
-    }
-
-    private bool DetectKinectMovement()
-    {
-        // Check if sensor is ready
-        if (sensor == null || !sensor.IsOpen || !sensor.IsAvailable)
-            return false;
-
-        if (bodyFrameReader == null)
-            return false;
-
-        // Try to get a frame - if null, Kinect might still be initializing
-        using (var frame = bodyFrameReader.AcquireLatestFrame())
-        {
-            if (frame == null) 
-            {
-                // Frame is null - Kinect might still be warming up after restart
-                return false;
-            }
-
-            if (bodies == null)
-            {
-                bodies = new Body[sensor.BodyFrameSource.BodyCount];
-            }
-
-            frame.GetAndRefreshBodyData(bodies);
-
-            // Check for any tracked body
-            foreach (var body in bodies)
-            {
-                if (body == null || !body.IsTracked) continue;
-                
-                // If we detect a tracked body, that means Kinect is working and reading you
-                return true;
-            }
-        }
-        return false;
+        Debug.Log("[KinectPlayerMovement] Linked to Manager. Control Active.");
     }
 
     void Update()
     {
-        // Don't process movement until game has started (after wait period)
-        if (!gameStarted || isWaitingForMovement) return;
-        
-        if (isGameOver || hasWon) return;
+        if (!gameStarted) return;
 
-        if (isWalkingToDestination)
+        // Priority: Auto-walking (Cutscenes/End game)
+        if (isWalkingToDestination && targetDestination != null)
         {
             WalkToDestination();
             return;
         }
 
-        Vector3 forwardMovement = transform.forward * moveSpeed * Time.deltaTime;
-        if (controller.enabled)
+        // Standard Kinect Control
+        ProcessKinectInput();
+    }
+
+    private void ProcessKinectInput()
+    {
+        // Get the reader from the Manager (do not create a new one)
+        var reader = KinectSensorManager.Instance.BodyFrameReader;
+        if (reader == null) return;
+
+        bool isTracked = false;
+
+        // Acquire the latest frame
+        using (var frame = reader.AcquireLatestFrame())
         {
-            controller.Move(forwardMovement);
+            if (frame != null)
+            {
+                if (bodies == null) bodies = new Body[KinectSensorManager.Instance.Sensor.BodyFrameSource.BodyCount];
+                
+                frame.GetAndRefreshBodyData(bodies);
+
+                // Find the first tracked body
+                foreach (var body in bodies)
+                {
+                    if (body != null && body.IsTracked)
+                    {
+                        isTracked = true;
+                        ApplyRotation(body);
+                        MoveForward();
+                        break; // Only listen to one player
+                    }
+                }
+            }
         }
 
-        Quaternion userRotation = GetKinectRotation();
-
-        if (userRotation != Quaternion.identity)
-        {
-            // Apply an offset to correct the initial rotation
-            Quaternion rotationOffset = Quaternion.Euler(0, 90, 0); // Example offset, adjust as needed
-            Quaternion adjustedRotation = userRotation * rotationOffset;
-
-            // Smoothly apply the adjusted rotation
-            transform.rotation = Quaternion.Slerp(transform.rotation, adjustedRotation, Time.deltaTime * rotationSpeed);
-        }
-
+        // Apply gravity
         if (!controller.isGrounded)
         {
             controller.Move(Vector3.down * 9.8f * Time.deltaTime);
         }
 
-        if (controller.velocity.magnitude > 0)
-        {
-            animator.SetBool("isRunning", true);
-        }
-        else
+        // Update animation state based on tracking
+        if (!isTracked)
         {
             animator.SetBool("isRunning", false);
         }
     }
 
-
-    private Quaternion GetKinectRotation()
+    private void MoveForward()
     {
-        if (bodyFrameReader == null || sensor == null) return Quaternion.identity;
-
-        using (var frame = bodyFrameReader.AcquireLatestFrame())
+        Vector3 forwardMovement = transform.forward * (moveSpeed * Time.deltaTime);
+        if (controller.enabled)
         {
-            if (frame == null) return Quaternion.identity;
-
-            if (bodies == null)
-            {
-                bodies = new Body[sensor.BodyFrameSource.BodyCount];
-            }
-
-            frame.GetAndRefreshBodyData(bodies);
-
-            foreach (var body in bodies)
-            {
-                if (body == null || !body.IsTracked) continue;
-
-                JointOrientation spineOrientation = body.JointOrientations[JointType.SpineMid];
-                Quaternion kinectRotation = new Quaternion(
-                    spineOrientation.Orientation.X,
-                    -spineOrientation.Orientation.Y,
-                    spineOrientation.Orientation.Z,
-                    spineOrientation.Orientation.W
-                );
-
-                return kinectRotation;
-            }
+            controller.Move(forwardMovement);
         }
-
-        return Quaternion.identity;
+        animator.SetBool("isRunning", true);
     }
 
-
-    void OnDestroy()
+    private void ApplyRotation(Body body)
     {
-        // PROPER FIX: Don't dispose/close shared Kinect resources from manager
-        if (usingManager)
-        {
-            // Just clear references - manager owns the resources
-            bodyFrameReader = null;
-            sensor = null;
-            bodies = null;
-            Debug.Log("[KinectPlayerController] Cleared references (using shared manager resources).");
-        }
-        else
-        {
-            // QUICK FIX: Don't close the sensor on scene reload - this causes power-cycling!
-            // Only dispose the reader (it's recreated on next scene load)
-            if (bodyFrameReader != null)
-            {
-                bodyFrameReader.Dispose();
-                bodyFrameReader = null;
-            }
+        // Get Spine rotation
+        JointOrientation spineOrientation = body.JointOrientations[JointType.SpineMid];
+        Quaternion kinectRotation = new Quaternion(
+            spineOrientation.Orientation.X,
+            -spineOrientation.Orientation.Y,
+            spineOrientation.Orientation.Z,
+            spineOrientation.Orientation.W
+        );
 
-            // Clear references but DON'T close sensor
-            sensor = null;
-            bodies = null;
-        }
+        // Apply offset (90 degrees Y is common for Kinect->Unity alignment)
+        Quaternion rotationOffset = Quaternion.Euler(0, 90, 0); 
+        Quaternion adjustedRotation = kinectRotation * rotationOffset;
+
+        // Smoothly rotate
+        transform.rotation = Quaternion.Slerp(transform.rotation, adjustedRotation, Time.deltaTime * rotationSpeed);
     }
 
-    void OnApplicationQuit()
-    {
-        // Only close sensor when application is actually quitting
-        if (bodyFrameReader != null)
-        {
-            bodyFrameReader.Dispose();
-            bodyFrameReader = null;
-        }
+    // --- Cleanup Fix ---
+    // We removed OnDestroy and OnApplicationQuit from here.
+    // The KinectSensorManager handles all cleanup now.
 
-        if (sensor != null && sensor.IsOpen)
-        {
-            sensor.Close();
-            sensor = null;
-        }
-    }
-
-    void WalkToDestination()
+    // --- Auto Walk Logic ---
+    private void WalkToDestination()
     {
         Vector3 direction = (targetDestination.position - transform.position).normalized;
-
         Vector3 movement = direction * moveSpeed * Time.deltaTime;
         controller.Move(movement);
 
@@ -358,183 +163,9 @@ public class KinectPlayerController : MonoBehaviour
         }
     }
 
-void OnTriggerEnter(Collider other)
-{
-    if (other.gameObject.CompareTag("Money"))
+    public void SetDestination(Transform destination)
     {
-        other.gameObject.SetActive(false);
-        count++;
-        Debug.Log($"Money Collected! Current Count: {count}/{maxCount}");
-        UpdateCountText();
-
-        // Play coin sound
-        if (audioSource != null && coinSound != null)
-        {
-            audioSource.PlayOneShot(coinSound);
-        }
-    }
-
-    if (other.gameObject.CompareTag("WinPoint"))
-    {
-        Debug.Log("Player reached the win point!");
-        HandleWin();
-    }
-
-    if (other.gameObject.CompareTag("NoSpawn"))
-    {
-        other.gameObject.SetActive(false);
-        count++;
-        // Play coin sound
-        if (audioSource != null && coinSound != null)
-        {
-            audioSource.PlayOneShot(coinSound);
-        }
-        Debug.Log("Triggered auto-walk!");
-        
-        UpdateCountText();
-        if (barrelSpawner != null)
-        {
-            barrelSpawner.StopSpawning();
-        }
-    }
-
-    if (other.gameObject.CompareTag("Finale"))
-    {
-        Debug.Log("Finale triggered! Switching to animation camera.");
-        other.gameObject.SetActive(false);
-        count++;
-        UpdateCountText();
-        // Adjust character rotation
-        transform.rotation = Quaternion.Euler(0, 270, 0); // Example: Face backward (180 degrees on the Y-axis)
-        Debug.Log("Character rotation adjusted for finale.");
-        // Play coin sound
-        if (audioSource != null && coinSound != null)
-        {
-            audioSource.PlayOneShot(coinSound);
-        }
-
-        // Trigger the finale animation
-        if (finaleCamera != null)
-        {
-            Animator cameraAnimator = finaleCamera.GetComponent<Animator>();
-            if (cameraAnimator != null)
-            {
-                cameraAnimator.SetTrigger("StartFinale");
-                Debug.Log("Finale animation triggered.");
-            }
-
-            // Enable the finale camera
-            finaleCamera.enabled = true;
-        }
-
-        // Deactivate the main camera
-        if (mainCamera != null)
-        {
-            mainCamera.enabled = false;
-        }
-    }
-}
-
-    void OnControllerColliderHit(ControllerColliderHit hit)
-    {
-        if (hit.gameObject.CompareTag("Barrel") || hit.gameObject.CompareTag("Spikes"))
-        {
-            Debug.Log("Player hit! Game Over triggered.");
-            HandleGameOver();
-        }
-    }
-
-    public void HandleWin()
-    {
-        if (hasWon) return;
-        hasWon = true;
-
-        Debug.Log("You Win!");
-
-        if (barrelSpawner != null) barrelSpawner.StopSpawning();
-        StopAllBarrels();
-
-        animator.SetBool("isRunning", false);
-
-        // Show Win Canvas and hide others
-        if (winCanvas) winCanvas.SetActive(true);
-        if (gameOverCanvas) gameOverCanvas.SetActive(false);
-
-        winText.text = count.ToString();
-
-        // Stop background music
-        if (audioSource != null)
-        {
-            audioSource.Stop();
-        }
-        // Play death sound
-        if (audioSource != null && winSound != null)
-        {
-            audioSource.PlayOneShot(winSound);
-        }
-    }
-
-    private void StopAllBarrels()
-    {
-        RollBarrel[] barrels = FindObjectsOfType<RollBarrel>();
-        foreach (RollBarrel barrel in barrels)
-        {
-            barrel.StopTorque();
-        }
-    }
-
-    public void HandleGameOver()
-    {
-        if (isGameOver) return;
-        isGameOver = true;
-
-        Debug.Log("Game Over!");
-
-        controller.enabled = false;
-
-        animator.SetTrigger("Die");
-
-        if (barrelSpawner != null) barrelSpawner.StopSpawning();
-        StopAllBarrels();
-
-        // Show Game Over Canvas and hide others
-        if (gameOverCanvas) gameOverCanvas.SetActive(true);
-        if (winCanvas) winCanvas.SetActive(false);
-
-        gameOverText.text = count.ToString();
-
-        // Stop background music
-        if (audioSource != null)
-        {
-            audioSource.Stop();
-        }
-
-        // Play death sound
-        if (audioSource != null && deathSound != null)
-        {
-            audioSource.PlayOneShot(deathSound);
-        }
-    }
-
-    private void UpdateCountText()
-    {
-        countText.text = "Money: " + count + " / " + maxCount;
-    }
-        private IEnumerator SwitchToFinaleCamera()
-    {
-        Debug.Log("Switching to finale camera...");
-        float timer = 0f;
-
-        while (timer < cameraTransitionDuration)
-        {
-            timer += Time.deltaTime;
-            yield return null;
-        }
-
-        // Disable main camera and enable finale camera
-        if (mainCamera) mainCamera.enabled = false;
-        if (finaleCamera) finaleCamera.enabled = true;
-
-        Debug.Log("Finale camera active.");
+        targetDestination = destination;
+        isWalkingToDestination = true;
     }
 }
