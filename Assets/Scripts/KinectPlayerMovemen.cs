@@ -12,10 +12,12 @@ public class KinectPlayerController : MonoBehaviour
     private float currentRotationY; // To track the current Y rotation
     private float initialRotationY; // To store the initial Y rotation
 
-    // Use the singleton KinectManager instead of managing Kinect directly
+    // Kinect references
+    private KinectSensor sensor;
     private BodyFrameReader bodyFrameReader;
     private Body[] bodies;
-    private bool kinectReady = false;
+    private bool gameStarted = false;
+    private bool isWaitingForMovement = true;
 
     [Header("Collectibles")]
     public TextMeshProUGUI countText;
@@ -58,14 +60,14 @@ public class KinectPlayerController : MonoBehaviour
         controller = GetComponent<CharacterController>();
         animator = GetComponentInChildren<Animator>();
 
-        // Wait for Kinect to be ready using the singleton manager
-        StartCoroutine(WaitForKinectAndInitialize());
+        // Initialize Kinect
+        InitializeKinect();
 
         // Audio setup
         audioSource = GetComponent<UnityEngine.AudioSource>();
         if (audioSource == null)
         {
-            audioSource = GetComponent<UnityEngine.AudioSource>();
+            audioSource = gameObject.AddComponent<UnityEngine.AudioSource>();
         }
 
         // Play background music
@@ -85,28 +87,89 @@ public class KinectPlayerController : MonoBehaviour
         if (finaleCamera) finaleCamera.enabled = false;
 
         UpdateCountText();
+
+        // Start waiting for movement detection
+        StartCoroutine(WaitForMovementOrTimeout());
     }
 
-    private IEnumerator WaitForKinectAndInitialize()
+    private void InitializeKinect()
     {
-        // Ensure KinectSensorManager exists and is initializing
-        KinectSensorManager kinectManager = KinectSensorManager.Instance;
+        sensor = KinectSensor.GetDefault();
+        if (sensor != null)
+        {
+            if (!sensor.IsOpen)
+            {
+                sensor.Open();
+            }
+            bodyFrameReader = sensor.BodyFrameSource.OpenReader();
+            bodies = new Body[sensor.BodyFrameSource.BodyCount];
+            Debug.Log("[KinectPlayerController] Kinect initialized.");
+        }
+        else
+        {
+            Debug.LogWarning("[KinectPlayerController] KinectSensor.GetDefault() returned null. Kinect not connected?");
+        }
+    }
+
+    private IEnumerator WaitForMovementOrTimeout()
+    {
+        float waitTime = 5f; // 5 seconds max wait
+        float elapsed = 0f;
         
-        // Wait for Kinect to be ready
-        yield return StartCoroutine(kinectManager.WaitForReady());
+        Debug.Log("[KinectPlayerController] Waiting for Kinect movement detection (max 5 seconds)...");
         
-        // Get references from the manager
-        bodyFrameReader = kinectManager.BodyFrameReader;
-        bodies = kinectManager.Bodies;
-        kinectReady = true;
+        while (elapsed < waitTime && !gameStarted)
+        {
+            // Check if Kinect detects any body movement
+            if (DetectKinectMovement())
+            {
+                gameStarted = true;
+                isWaitingForMovement = false;
+                Debug.Log("[KinectPlayerController] Movement detected! Game starting now.");
+                yield break;
+            }
+            
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
         
-        Debug.Log("[KinectPlayerController] Kinect is ready, player can now move!");
+        // Timeout reached, start anyway
+        gameStarted = true;
+        isWaitingForMovement = false;
+        Debug.Log("[KinectPlayerController] Wait timeout reached. Starting game.");
+    }
+
+    private bool DetectKinectMovement()
+    {
+        if (bodyFrameReader == null || sensor == null || !sensor.IsOpen || !sensor.IsAvailable)
+            return false;
+
+        using (var frame = bodyFrameReader.AcquireLatestFrame())
+        {
+            if (frame == null) return false;
+
+            if (bodies == null)
+            {
+                bodies = new Body[sensor.BodyFrameSource.BodyCount];
+            }
+
+            frame.GetAndRefreshBodyData(bodies);
+
+            foreach (var body in bodies)
+            {
+                if (body == null || !body.IsTracked) continue;
+                
+                // If we detect a tracked body, that means Kinect is working
+                return true;
+            }
+        }
+        return false;
     }
 
     void Update()
     {
-        // Don't process movement until Kinect is ready
-        if (!kinectReady) return;
+        // Don't process movement until game has started (after wait period)
+        if (!gameStarted || isWaitingForMovement) return;
         
         if (isGameOver || hasWon) return;
 
@@ -152,7 +215,7 @@ public class KinectPlayerController : MonoBehaviour
 
     private Quaternion GetKinectRotation()
     {
-        if (bodyFrameReader == null || !kinectReady) return Quaternion.identity;
+        if (bodyFrameReader == null || sensor == null) return Quaternion.identity;
 
         using (var frame = bodyFrameReader.AcquireLatestFrame())
         {
@@ -160,15 +223,7 @@ public class KinectPlayerController : MonoBehaviour
 
             if (bodies == null)
             {
-                KinectSensorManager kinectManager = KinectSensorManager.Instance;
-                if (kinectManager != null && kinectManager.Sensor != null)
-                {
-                    bodies = new Body[kinectManager.Sensor.BodyFrameSource.BodyCount];
-                }
-                else
-                {
-                    return Quaternion.identity;
-                }
+                bodies = new Body[sensor.BodyFrameSource.BodyCount];
             }
 
             frame.GetAndRefreshBodyData(bodies);
@@ -195,11 +250,17 @@ public class KinectPlayerController : MonoBehaviour
 
     void OnDestroy()
     {
-        // Don't dispose bodyFrameReader or close sensor here - the KinectSensorManager handles that
-        // We just clear our references
-        bodyFrameReader = null;
-        bodies = null;
-        kinectReady = false;
+        if (bodyFrameReader != null)
+        {
+            bodyFrameReader.Dispose();
+            bodyFrameReader = null;
+        }
+
+        if (sensor != null && sensor.IsOpen)
+        {
+            sensor.Close();
+            sensor = null;
+        }
     }
 
     void WalkToDestination()

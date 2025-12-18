@@ -9,11 +9,6 @@ public class MenuController : MonoBehaviour
 
     void Start()
     {
-        // Initialize KinectSensorManager early so it's ready when the game starts
-        // This prevents delays when loading the game scene
-        // The KinectSensorManager initializes automatically in Awake(), so just accessing Instance starts it
-        KinectSensorManager kinectManager = KinectSensorManager.Instance;
-        
         // Ensure there's an AudioSource component attached to the GameObject
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
