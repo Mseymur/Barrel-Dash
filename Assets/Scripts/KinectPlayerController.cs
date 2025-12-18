@@ -44,6 +44,14 @@ public class KinectPlayerController : MonoBehaviour
             Debug.Log("[KinectPlayerController] Disabled standard PlayerController while waiting for Kinect.");
         }
 
+        // Disable PlayerMovement to prevent auto-run while waiting
+        PlayerMovement standardPlayerMovement = GetComponent<PlayerMovement>();
+        if (standardPlayerMovement != null)
+        {
+            standardPlayerMovement.enabled = false;
+            Debug.Log("[KinectPlayerController] Disabled standard PlayerMovement while waiting for Kinect.");
+        }
+
         // Ensure Manager exists
         if (KinectSensorManager.Instance == null)
         {
@@ -76,13 +84,16 @@ public class KinectPlayerController : MonoBehaviour
 
         Debug.Log("[KinectPlayerController] Linked to KinectSensorManager. Game Starting.");
 
-        // Re-enable standard PlayerController if needed (or keep it disabled if Kinect replaces it)
-        // Assuming we want to enable it for game logic (collecting coins etc) but maybe not movement?
-        // If PlayerController handles movement via keyboard, we might want to keep it disabled or suppress it.
-        // For now, let's enable it but ensure we control the movement.
+        // Re-enable standard PlayerController if needed
         if (standardPlayerController != null)
         {
             standardPlayerController.enabled = true;
+        }
+
+        // Re-enable standard PlayerMovement if needed
+        if (standardPlayerMovement != null)
+        {
+            standardPlayerMovement.enabled = true;
         }
 
         // Start waiting for movement detection (or just start if we trust the countdown)
