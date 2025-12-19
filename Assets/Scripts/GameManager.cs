@@ -18,22 +18,39 @@ public class GameManager : MonoBehaviour
         else Destroy(gameObject);
     }
 
+    private bool isWarmupComplete = false;
+
     void Start()
     {
         // Freeze game initially
         isGameActive = false;
-        Time.timeScale = 1f; // Keep time running for Kinect updates, but we pause logic manually
+        isWarmupComplete = false;
+        Time.timeScale = 1f; 
         
         if (waitingForUserCanvas) waitingForUserCanvas.SetActive(true);
-        if (statusText) statusText.text = "Initializing Kinect...";
+        if (statusText) statusText.text = "Initializing System...";
         
-        // Ensure gestures are ON while waiting (or for menu)
+        // Ensure gestures are ON while waiting
         SetGesturesActive(true);
+
+        // Start Warmup to allow KinectManager to reset
+        StartCoroutine(WarmupRoutine());
+    }
+
+    System.Collections.IEnumerator WarmupRoutine()
+    {
+        // Wait for 1 second to ensure KinectManager handles the scene load 
+        // and clears old user data.
+        yield return new WaitForSeconds(1.0f);
+        isWarmupComplete = true;
     }
 
     void Update()
     {
         if (isGameActive) return;
+
+        // Don't check anything until warmup is done
+        if (!isWarmupComplete) return;
 
         KinectManager km = KinectManager.Instance;
         
@@ -49,6 +66,8 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        // Now that we've waited, this should return FALSE initially on restart,
+        // because KinectManager cleared the users.
         if (km.IsUserDetected())
         {
             // User found! Start game.
@@ -56,6 +75,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
+            // Update UI to tell user to stand in front
             if (statusText) statusText.text = "Please stand in front of the Kinect...";
         }
     }

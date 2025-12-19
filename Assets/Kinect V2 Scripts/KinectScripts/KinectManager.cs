@@ -2518,6 +2518,10 @@ public class KinectManager : MonoBehaviour
 	    avatarControllers.Clear();
 	    gestureListeners.Clear();
 	    
+	    // CRITICAL: Clear existing users so the game logic resets!
+	    // This forces GameManager to wait until the sensor re-detects the user in the new scene.
+	    ClearKinectUsers();
+	    
 	    // Find NEW avatars in the new scene
 	    MonoBehaviour[] monoScripts = FindObjectsOfType<MonoBehaviour>();
 		foreach(MonoBehaviour monoScript in monoScripts)
