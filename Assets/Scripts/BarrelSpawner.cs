@@ -21,6 +21,12 @@ public class BarrelSpawner : MonoBehaviour
     {
         while (!stopSpawning)
         {
+            // Wait until the game is explicitly active (User detected)
+            while (GameManager.Instance != null && !GameManager.Instance.isGameActive)
+            {
+                yield return null;
+            }
+
             Transform spawnPoint = spawnOnLeft ? leftSpawnPoint : rightSpawnPoint;
             Instantiate(barrelPrefab, spawnPoint.position, Quaternion.identity);
             spawnOnLeft = !spawnOnLeft;
