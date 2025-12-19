@@ -29,6 +29,7 @@ public class PlayerController : MonoBehaviour
     public InteractableJointType trackedJoint = InteractableJointType.SpineMid;
     // We map our own enum or just use int to avoid dependency issues if namespace is missing
     public enum InteractableJointType : int { SpineMid = 1, SpineBase = 0, Head = 3 } 
+    public float kinectRotationYOffset = -90f; // Adjusted key variable for model alignment
     private long lockedUserId = 0; // Lock onto the player who starts the game 
 
 
@@ -194,7 +195,8 @@ public class PlayerController : MonoBehaviour
         // Use the locked ID
         Quaternion userRot = km.GetJointOrientation(lockedUserId, (int)trackedJoint, false);
         
-        Quaternion rotationOffset = Quaternion.Euler(0, 180, 0); 
+        // Use the adjustable offset (Set to -90 based on your scene setup)
+        Quaternion rotationOffset = Quaternion.Euler(0, kinectRotationYOffset, 0); 
         Quaternion targetRotation = userRot * rotationOffset;
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * rotationSpeed / 10f);
     }
@@ -338,6 +340,9 @@ void OnTriggerEnter(Collider other)
         {
             audioSource.PlayOneShot(winSound);
         }
+        
+        // Enable gestures for UI interaction
+        if (GameManager.Instance != null) GameManager.Instance.SetGesturesActive(true);
     }
 
     public void HandleGameOver()
@@ -372,6 +377,9 @@ void OnTriggerEnter(Collider other)
         {
             audioSource.PlayOneShot(deathSound);
         }
+        
+        // Enable gestures for UI interaction
+        if (GameManager.Instance != null) GameManager.Instance.SetGesturesActive(true);
     }
 
     private void StopAllBarrels()
