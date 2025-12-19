@@ -74,29 +74,45 @@ public class GameManager : MonoBehaviour
     {
         if (KinectManager.Instance != null)
         {
-            // We use string reflection to avoid missing type errors
-            MonoBehaviour interactionManager = KinectManager.Instance.GetComponent("InteractionManager") as MonoBehaviour;
-            if (interactionManager != null)
+            // 1. InteractionManager
+            DisableComponentByName(KinectManager.Instance.gameObject, "InteractionManager", active);
+            
+            // 2. InteractionInputModule (often on EventSystem or Manager)
+            DisableComponentByName(KinectManager.Instance.gameObject, "InteractionInputModule", active);
+            
+            // Check EventSystem separately
+            GameObject eventSystem = GameObject.Find("EventSystem");
+            if (eventSystem != null)
             {
-                interactionManager.enabled = active;
-                Debug.Log($"[GameManager] InteractionManager enabled: {active}");
+               DisableComponentByName(eventSystem, "InteractionInputModule", active);
             }
-            else
-            {
-                // Fallback: Try to find it in the scene if not on the same object
-                GameObject interactionObj = GameObject.Find("InteractionManager");
-                if (interactionObj == null) interactionObj = GameObject.Find("KinectController");
-                
-                if (interactionObj != null)
-                {
-                    interactionManager = interactionObj.GetComponent("InteractionManager") as MonoBehaviour;
-                    if (interactionManager != null)
-                    {
-                        interactionManager.enabled = active;
-                        Debug.Log($"[GameManager] InteractionManager (found separately) enabled: {active}");
-                    }
-                }
-            }
+        }
+    }
+
+    private void DisableComponentByName(GameObject target, string componentName, bool active)
+    {
+        if (target == null) return;
+        
+        MonoBehaviour component = target.GetComponent(componentName) as MonoBehaviour;
+        if (component != null)
+        {
+            component.enabled = active;
+            Debug.Log($"[GameManager] {componentName} on {target.name} set to: {active}");
+        }
+        else
+        {
+             // Fallback search in scene if not found on target (only if we really expect it)
+             // But for safety, let's just log if we find it elsewhere?
+             // Actually, let's just look for the object globally if not found on target
+             if (componentName == "InteractionManager")
+             {
+                 GameObject obj = GameObject.Find(componentName);
+                 if (obj)
+                 {
+                     component = obj.GetComponent(componentName) as MonoBehaviour;
+                     if (component) component.enabled = active;
+                 }
+             }
         }
     }
 }
