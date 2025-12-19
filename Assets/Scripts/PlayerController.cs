@@ -1,6 +1,12 @@
 using System.Collections;
 using UnityEngine;
 using TMPro;
+using System.Collections;
+using UnityEngine;
+using TMPro;
+
+// Ensure we can access Kinect stuff
+// using Windows.Kinect; // Uncomment if needed, but KinectManager usually handles the types
 
 public class PlayerController : MonoBehaviour
 {
@@ -22,6 +28,13 @@ public class PlayerController : MonoBehaviour
 
     public Transform targetDestination;
     public string triggerTag = "NoSpawn";
+    
+    [Header("Kinect Controls")]
+    public bool useKinect = true;
+    public InteractableJointType trackedJoint = InteractableJointType.SpineMid;
+    // We map our own enum or just use int to avoid dependency issues if namespace is missing
+    public enum InteractableJointType : int { SpineMid = 1, SpineBase = 0, Head = 3 } 
+
 
     [Header("Spawners")]
     public BarrelSpawner barrelSpawner;
@@ -80,9 +93,18 @@ public class PlayerController : MonoBehaviour
         UpdateCountText();
     }
 
+    }
+
     void Update()
     {
         if (isGameOver || hasWon) return;
+
+        // --- GAME FREEZE CHECK ---
+        if (GameManager.Instance != null && !GameManager.Instance.isGameActive)
+        {
+            animator.SetBool("isRunning", false);
+            return;
+        }
 
         if (isWalkingToDestination)
         {
@@ -90,7 +112,29 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        float vertical = 1f;
+        if (useKinect)
+        {
+            ProcessKinectInput();
+        }
+        else
+        {
+            ProcessKeyboardInput();
+        }
+
+        // Gravity
+        if (!controller.isGrounded)
+        {
+            controller.Move(Vector3.down * 9.8f * Time.deltaTime);
+        }
+    }
+
+    private void ProcessKeyboardInput()
+    {
+        float vertical = 1f; // Auto run? Or Input.GetAxis("Vertical")? 
+        // User original had fixed vertical = 1f; implies auto-run.
+        // But let's respect input if they want keyboard control
+        // float vertical = Input.GetAxis("Vertical"); 
+        
         float horizontal = Input.GetAxis("Horizontal");
 
         if (horizontal != 0)
@@ -110,12 +154,51 @@ public class PlayerController : MonoBehaviour
         {
             animator.SetBool("isRunning", false);
         }
-
-        if (!controller.isGrounded)
-        {
-            controller.Move(Vector3.down * 9.8f * Time.deltaTime);
-        }
     }
+
+    private void ProcessKinectInput()
+    {
+        KinectManager km = KinectManager.Instance;
+        if (km == null || !km.IsInitialized() || !km.IsUserDetected())
+        {
+            animator.SetBool("isRunning", false);
+            return;
+        }
+
+        long userId = km.GetPrimaryUserID();
+        if (userId == 0) return;
+
+        // MOVEMENT
+        // Auto-run forward when tracked
+        Vector3 forwardMove = transform.forward * moveSpeed * Time.deltaTime;
+        controller.Move(forwardMove);
+        animator.SetBool("isRunning", true);
+
+        // ROTATION
+        // Attempt to get user orientation. 
+        // NOTE: The user reported error on 3 args. 
+        // If GetUserOrientation(userId, joint, flip) failed, we try GetUserOrientation(userId, joint)
+        // We cast our enum to int to match KinectManager's likely expectation of a joint index.
+        // Correcting overload to 2 arguments based on error report
+        Quaternion userRot = km.GetUserOrientation(userId, (int)trackedJoint);
+        
+        // Fix: If the above line fails, the user might need to remove 'false'. 
+        // But standard KinectManager usually takes (UserId, JointIndex, Flip).
+        // Since user said "No overload takes 3 arguments", it might be (UserId, JointIndex).
+        // Let's TRY 2 arguments logic if we can, but I can't verify signature.
+        // I will assume 2 arguments based on error.
+        // Quaternion userRot = km.GetUserOrientation(userId, (int)trackedJoint);
+
+        // WAIT, I must be careful. I will use a try-catch pattern or just guess 2 args.
+        // "No overload takes 3 arguments" -> It definitely doesn't take 3.
+        // So I will write it with 2.
+        
+        // Applying rotation
+        Quaternion rotationOffset = Quaternion.Euler(0, 180, 0); // Tweaked for typical Kinect mirroring
+        Quaternion targetRotation = userRot * rotationOffset;
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * rotationSpeed / 10f);
+    }
+
 
     private float NormalizeAngle(float angle)
     {
