@@ -30,6 +30,7 @@ public class PlayerController : MonoBehaviour
     // We map our own enum or just use int to avoid dependency issues if namespace is missing
     public enum InteractableJointType : int { SpineMid = 1, SpineBase = 0, Head = 3 } 
     public float kinectRotationYOffset = -90f; // Adjusted key variable for model alignment
+    public bool mirrorUser = false; // Toggle to fix reversed rotation
     private long lockedUserId = 0; // Lock onto the player who starts the game 
 
 
@@ -193,7 +194,7 @@ public class PlayerController : MonoBehaviour
 
         // ROTATION
         // Use the locked ID
-        Quaternion userRot = km.GetJointOrientation(lockedUserId, (int)trackedJoint, false);
+        Quaternion userRot = km.GetJointOrientation(lockedUserId, (int)trackedJoint, mirrorUser);
         
         // Use the adjustable offset (Set to -90 based on your scene setup)
         Quaternion rotationOffset = Quaternion.Euler(0, kinectRotationYOffset, 0); 
