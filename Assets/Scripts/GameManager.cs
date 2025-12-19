@@ -72,47 +72,33 @@ public class GameManager : MonoBehaviour
 
     public void SetGesturesActive(bool active)
     {
-        if (KinectManager.Instance != null)
+        // BRUTE FORCE DISABLE/ENABLE
+        // usage of FindObjectsOfType to catch ALL instances in the scene
+        MonoBehaviour[] allScripts = FindObjectsOfType<MonoBehaviour>();
+        
+        foreach (MonoBehaviour script in allScripts)
         {
-            // 1. InteractionManager
-            DisableComponentByName(KinectManager.Instance.gameObject, "InteractionManager", active);
+            if (script == null) continue;
             
-            // 2. InteractionInputModule (often on EventSystem or Manager)
-            DisableComponentByName(KinectManager.Instance.gameObject, "InteractionInputModule", active);
+            string scriptName = script.GetType().Name;
             
-            // Check EventSystem separately
-            GameObject eventSystem = GameObject.Find("EventSystem");
-            if (eventSystem != null)
+            if (scriptName == "InteractionManager" || scriptName == "InteractionInputModule")
             {
-               DisableComponentByName(eventSystem, "InteractionInputModule", active);
+                if (script.enabled != active)
+                {
+                    script.enabled = active;
+                    Debug.Log($"[GameManager] {scriptName} on {script.gameObject.name} set to: {active}");
+                }
             }
         }
-    }
-
-    private void DisableComponentByName(GameObject target, string componentName, bool active)
-    {
-        if (target == null) return;
         
-        MonoBehaviour component = target.GetComponent(componentName) as MonoBehaviour;
-        if (component != null)
+        // Also check specifically for "EventSystem" if it has any other components
+        GameObject eventSystem = GameObject.Find("EventSystem");
+        if (eventSystem != null)
         {
-            component.enabled = active;
-            Debug.Log($"[GameManager] {componentName} on {target.name} set to: {active}");
-        }
-        else
-        {
-             // Fallback search in scene if not found on target (only if we really expect it)
-             // But for safety, let's just log if we find it elsewhere?
-             // Actually, let's just look for the object globally if not found on target
-             if (componentName == "InteractionManager")
-             {
-                 GameObject obj = GameObject.Find(componentName);
-                 if (obj)
-                 {
-                     component = obj.GetComponent(componentName) as MonoBehaviour;
-                     if (component) component.enabled = active;
-                 }
-             }
+            // Try to find standard Unity EventSystem input modules if they are interfering?
+            // Usually not, but if KinectInputModule inherits from BaseInputModule...
+            // Let's stick to the known Kinect scripts first.
         }
     }
 }
