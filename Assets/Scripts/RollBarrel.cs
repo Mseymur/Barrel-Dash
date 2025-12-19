@@ -16,6 +16,17 @@ public class RollBarrel : MonoBehaviour
 
     void FixedUpdate()
     {
+        // Freeze logic if Game Manager is waiting for user
+        if (GameManager.Instance != null && !GameManager.Instance.isGameActive)
+        {
+            if (rb != null && !rb.isKinematic)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+            return;
+        }
+
         if (applyTorque)
         {
             // Apply rolling torque as long as applyTorque is true

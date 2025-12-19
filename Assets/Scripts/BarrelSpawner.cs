@@ -22,7 +22,13 @@ public class BarrelSpawner : MonoBehaviour
         while (!stopSpawning)
         {
             // Wait until the game is explicitly active (User detected)
-            while (GameManager.Instance != null && !GameManager.Instance.isGameActive)
+            // If GameManager is missing, we WAIT (Pause) and warn, rather than running wildly.
+            if (GameManager.Instance == null)
+            {
+                Debug.LogWarning("[BarrelSpawner] GameManager not found! Pausing spawning until GameManager is present.");
+            }
+
+            while (GameManager.Instance == null || !GameManager.Instance.isGameActive)
             {
                 yield return null;
             }
