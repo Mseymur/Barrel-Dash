@@ -236,6 +236,12 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    public void SetDestination(Transform destination)
+    {
+        targetDestination = destination;
+        isWalkingToDestination = true;
+    }
+
 void OnTriggerEnter(Collider other)
 {
     if (other.gameObject.CompareTag("Money"))

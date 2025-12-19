@@ -38,12 +38,12 @@ public class PlayerGameLogic : MonoBehaviour
     private AudioSource audioSource;
 
     // Reference to the movement script if we need to trigger auto-walk
-    private KinectPlayerMovement kinectMovement;
+    private PlayerController kinectMovement;
 
     void Start()
     {
         // Setup references
-        kinectMovement = GetComponent<KinectPlayerMovement>();
+        kinectMovement = GetComponent<PlayerController>();
 
         // Audio setup
         audioSource = GetComponent<AudioSource>();
