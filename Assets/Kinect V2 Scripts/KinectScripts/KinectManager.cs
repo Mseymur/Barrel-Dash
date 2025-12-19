@@ -2423,8 +2423,9 @@ public class KinectManager : MonoBehaviour
 
     void Awake()
 	{
+        Debug.Log("[KinectManager] Awake called. Instance: " + (instance ? instance.name : "null"));
+
 		// set the singleton instance
-		//instance = this;
 		if (instance == null) 
 		{
 			instance = this;
@@ -2432,18 +2433,29 @@ public class KinectManager : MonoBehaviour
 #if USE_SINGLE_KM_IN_MULTIPLE_SCENES
             if (dontDestroyAcrossScenes)
             {
+                // FORCE ROOT for DontDestroyOnLoad to work
+                if (transform.parent != null)
+                {
+                    Debug.Log("[KinectManager] Detaching from parent to ensure persistence.");
+                    transform.SetParent(null);
+                }
                 DontDestroyOnLoad(gameObject);
+                Debug.Log("[KinectManager] Marked as Persistent.");
             }
 #endif
         }
         else if (instance != this) 
 		{
-			Destroy(this);
+            Debug.Log("[KinectManager] Duplicate detected. Destroying new instance.");
+			Destroy(this.gameObject); // Destroy the GAME OBJECT of the duplicate, not just the script
 			return;
 		}
 
 		try
 		{
+            // If we are the duplicate returning above, we won't reach here. 
+            // If we are the persistent one, we continue.
+            // ... (rest of standard init)
 			bool bOnceRestarted = false;
 			if(System.IO.File.Exists("KMrestart.txt"))
 			{
@@ -2787,6 +2799,8 @@ public class KinectManager : MonoBehaviour
 	{
 		if (instance == null || instance != this)
 			return;
+        
+        Debug.Log("[KinectManager] OnDestroy called on Persistent Instance! Shutting down sensor.");
 		
 		//Debug.Log("KM was destroyed");
 
