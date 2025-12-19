@@ -172,8 +172,8 @@ public class PlayerController : MonoBehaviour
         // NOTE: The user reported error on 3 args. 
         // If GetUserOrientation(userId, joint, flip) failed, we try GetUserOrientation(userId, joint)
         // We cast our enum to int to match KinectManager's likely expectation of a joint index.
-        // Correcting overload to 2 arguments based on error report
-        Quaternion userRot = km.GetUserOrientation(userId, (int)trackedJoint);
+        // Correcting method call. Standard KinectManager usually uses GetJointOrientation for specific joints.
+        Quaternion userRot = km.GetJointOrientation(userId, (int)trackedJoint, false);
         
         // Fix: If the above line fails, the user might need to remove 'false'. 
         // But standard KinectManager usually takes (UserId, JointIndex, Flip).
