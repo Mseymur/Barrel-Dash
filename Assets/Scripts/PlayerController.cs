@@ -1,12 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using TMPro;
-using System.Collections;
-using UnityEngine;
-using TMPro;
-
-// Ensure we can access Kinect stuff
-// using Windows.Kinect; // Uncomment if needed, but KinectManager usually handles the types
+// using Windows.Kinect; 
 
 public class PlayerController : MonoBehaviour
 {
@@ -91,8 +86,6 @@ public class PlayerController : MonoBehaviour
         if (finaleCamera) finaleCamera.enabled = false;
 
         UpdateCountText();
-    }
-
     }
 
     void Update()
