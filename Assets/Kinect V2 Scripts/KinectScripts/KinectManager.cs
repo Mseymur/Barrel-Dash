@@ -3,6 +3,7 @@
 
 
 using UnityEngine;
+using UnityEngine.SceneManagement; // Added for SceneManager
 //using UnityEngine.Networking;
 
 using System;
@@ -2441,13 +2442,16 @@ public class KinectManager : MonoBehaviour
                 }
                 DontDestroyOnLoad(gameObject);
                 Debug.Log("[KinectManager] Marked as Persistent.");
+                
+                // Subscribe to scene loaded event
+                SceneManager.sceneLoaded += OnSceneLoaded;
             }
 #endif
         }
         else if (instance != this) 
 		{
             Debug.Log("[KinectManager] Duplicate detected. Destroying new instance.");
-			Destroy(this.gameObject); // Destroy the GAME OBJECT of the duplicate, not just the script
+			Destroy(this.gameObject); 
 			return;
 		}
 
@@ -2503,6 +2507,47 @@ public class KinectManager : MonoBehaviour
 			}
 		}
 
+	}
+
+	// Handle Scene Loading for Persistent Instance
+	private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+	{
+	    Debug.Log($"[KinectManager] Scene Loaded: {scene.name}. Refreshing references...");
+	    
+	    // Clear old list of avatars (they are destroyed now)
+	    avatarControllers.Clear();
+	    gestureListeners.Clear();
+	    
+	    // Find NEW avatars in the new scene
+	    MonoBehaviour[] monoScripts = FindObjectsOfType<MonoBehaviour>();
+		foreach(MonoBehaviour monoScript in monoScripts)
+		{
+			if((monoScript is AvatarController) && monoScript.enabled)
+			{
+				avatarControllers.Add((AvatarController)monoScript);
+			}
+			
+			if((monoScript is KinectGestures.GestureListenerInterface) && monoScript.enabled)
+			{
+				gestureListeners.Add(monoScript);
+			}
+		}
+		
+		// If we need a Gestures Manager and it's missing (destroyed), find or add it
+		if(gestureManager == null)
+		{
+		    // ... similar logic to Awake ...
+		    foreach(MonoBehaviour monoScript in monoScripts)
+			{
+				if((monoScript is KinectGestures) && monoScript.enabled)
+				{
+					gestureManager = (KinectGestures)monoScript;
+					break;
+				}
+			}
+		}
+		
+		Debug.Log($"[KinectManager] References refreshed. Avatars: {avatarControllers.Count}, Listeners: {gestureListeners.Count}");
 	}
 
     /// <summary>

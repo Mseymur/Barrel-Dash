@@ -96,7 +96,8 @@ public class PlayerController : MonoBehaviour
         if (isGameOver || hasWon) return;
 
         // --- GAME FREEZE CHECK ---
-        if (GameManager.Instance != null && !GameManager.Instance.isGameActive)
+        // Default to PAUSED if GameManager is missing or not active
+        if (GameManager.Instance == null || !GameManager.Instance.isGameActive)
         {
             animator.SetBool("isRunning", false);
             return;
