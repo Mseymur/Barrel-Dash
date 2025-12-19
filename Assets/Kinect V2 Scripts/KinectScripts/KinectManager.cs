@@ -17,7 +17,7 @@ public class KinectManager : MonoBehaviour
 {
 #if USE_SINGLE_KM_IN_MULTIPLE_SCENES
     [Tooltip("Whether or not to keep the KinectManager instance across scenes.")]
-    public bool dontDestroyAcrossScenes = false;
+    public bool dontDestroyAcrossScenes = true; // FORCE TRUE BY DEFAULT
 #endif
 
 	[Tooltip("How high above the ground is the sensor, in meters.")]
