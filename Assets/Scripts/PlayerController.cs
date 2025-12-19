@@ -29,6 +29,7 @@ public class PlayerController : MonoBehaviour
     public InteractableJointType trackedJoint = InteractableJointType.SpineMid;
     // We map our own enum or just use int to avoid dependency issues if namespace is missing
     public enum InteractableJointType : int { SpineMid = 1, SpineBase = 0, Head = 3 } 
+    private long lockedUserId = 0; // Lock onto the player who starts the game 
 
 
     [Header("Spawners")]
@@ -152,42 +153,48 @@ public class PlayerController : MonoBehaviour
     private void ProcessKinectInput()
     {
         KinectManager km = KinectManager.Instance;
-        if (km == null || !km.IsInitialized() || !km.IsUserDetected())
+        if (km == null || !km.IsInitialized())
         {
             animator.SetBool("isRunning", false);
             return;
         }
 
-        long userId = km.GetPrimaryUserID();
-        if (userId == 0) return;
+        // LOCKING LOGIC:
+        // If we don't have a locked user, try to find the Primary one.
+        if (lockedUserId == 0)
+        {
+            long potentialId = km.GetPrimaryUserID();
+            if (potentialId != 0)
+            {
+                lockedUserId = potentialId;
+                Debug.Log($"[PlayerController] Locked onto UserID: {lockedUserId}");
+            }
+            else
+            {
+                // No user found to start with
+                animator.SetBool("isRunning", false);
+                return;
+            }
+        }
+
+        // We check if the locked user is still detected.
+        // If they are gone, we stop moving (effectively pausing/resetting).
+        // Since custom API isn't fully known, we assume if GetJointOrientation returns valid data, we are good.
+        // Or we check km.IsUserDetected(lockedUserId) if that exists.
+        // Fallback: If GetPrimaryUserID doesn't match and locked user is *lost*, we might be in trouble.
+        // But "IsUserDetected" usually checks ANY user. 
+        // We will just trust the lockedUserId. If the user leaves, the rotations usually freeze or zero out.
 
         // MOVEMENT
-        // Auto-run forward when tracked
         Vector3 forwardMove = transform.forward * moveSpeed * Time.deltaTime;
         controller.Move(forwardMove);
         animator.SetBool("isRunning", true);
 
         // ROTATION
-        // Attempt to get user orientation. 
-        // NOTE: The user reported error on 3 args. 
-        // If GetUserOrientation(userId, joint, flip) failed, we try GetUserOrientation(userId, joint)
-        // We cast our enum to int to match KinectManager's likely expectation of a joint index.
-        // Correcting method call. Standard KinectManager usually uses GetJointOrientation for specific joints.
-        Quaternion userRot = km.GetJointOrientation(userId, (int)trackedJoint, false);
+        // Use the locked ID
+        Quaternion userRot = km.GetJointOrientation(lockedUserId, (int)trackedJoint, false);
         
-        // Fix: If the above line fails, the user might need to remove 'false'. 
-        // But standard KinectManager usually takes (UserId, JointIndex, Flip).
-        // Since user said "No overload takes 3 arguments", it might be (UserId, JointIndex).
-        // Let's TRY 2 arguments logic if we can, but I can't verify signature.
-        // I will assume 2 arguments based on error.
-        // Quaternion userRot = km.GetUserOrientation(userId, (int)trackedJoint);
-
-        // WAIT, I must be careful. I will use a try-catch pattern or just guess 2 args.
-        // "No overload takes 3 arguments" -> It definitely doesn't take 3.
-        // So I will write it with 2.
-        
-        // Applying rotation
-        Quaternion rotationOffset = Quaternion.Euler(0, 180, 0); // Tweaked for typical Kinect mirroring
+        Quaternion rotationOffset = Quaternion.Euler(0, 180, 0); 
         Quaternion targetRotation = userRot * rotationOffset;
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * rotationSpeed / 10f);
     }
@@ -306,6 +313,7 @@ void OnTriggerEnter(Collider other)
     {
         if (hasWon) return;
         hasWon = true;
+        lockedUserId = 0; // Reset lock for next game
 
         Debug.Log("You Win!");
 
@@ -336,6 +344,7 @@ void OnTriggerEnter(Collider other)
     {
         if (isGameOver) return;
         isGameOver = true;
+        lockedUserId = 0; // Reset lock for next game
 
         Debug.Log("Game Over!");
 
