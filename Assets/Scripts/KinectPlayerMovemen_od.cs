@@ -1,16 +1,21 @@
 using System.Collections;
 using UnityEngine;
 using TMPro;
-// using Windows.Kinect; 
+using Windows.Kinect;
 
-public class PlayerController : MonoBehaviour
+public class KinectPlayerController : MonoBehaviour
 {
     public float moveSpeed = 5f;
     public float rotationSpeed = 200f;
     private CharacterController controller;
     private Animator animator;
-    private float currentRotationY;
-    private float initialRotationY;
+    private float currentRotationY; // To track the current Y rotation
+    private float initialRotationY; // To store the initial Y rotation
+
+    private KinectSensor sensor;
+    private BodyFrameReader bodyFrameReader;
+    private Body[] bodies;
+    private bool initialized = false;
 
     [Header("Collectibles")]
     public TextMeshProUGUI countText;
@@ -23,18 +28,8 @@ public class PlayerController : MonoBehaviour
 
     public Transform targetDestination;
     public string triggerTag = "NoSpawn";
-    
-    [Header("Kinect Controls")]
-    public bool useKinect = true;
-    public InteractableJointType trackedJoint = InteractableJointType.SpineMid;
-    // We map our own enum or just use int to avoid dependency issues if namespace is missing
-    public enum InteractableJointType : int { SpineMid = 1, SpineBase = 0, Head = 3 } 
-    public float kinectRotationYOffset = -90f; // Adjusted key variable for model alignment
-    public bool mirrorUser = true; // Defaulted to true to fix reversed rotation
-    private long lockedUserId = 0; // Lock onto the player who starts the game 
 
-
-    [Header("Spawners")]
+    [Header("Barrel Spawner")]
     public BarrelSpawner barrelSpawner;
 
     [Header("Win Settings")]
@@ -52,24 +47,30 @@ public class PlayerController : MonoBehaviour
     public float cameraTransitionDuration = 2f; // Smooth transition duration in seconds
 
     [Header("Audio Settings")]
-    public AudioClip backgroundMusic;  // Background music clip
-    public AudioClip coinSound;        // Coin collection sound clip
-    public AudioClip deathSound;    // Death sound clip
-    public AudioClip winSound;      // win sound clip
-    private AudioSource audioSource;   // AudioSource component
+    public AudioClip backgroundMusic;  
+    public AudioClip coinSound;        
+    public AudioClip deathSound;      
+    public AudioClip winSound;        
+    private UnityEngine.AudioSource audioSource;   // Fixed namespace conflict
 
     void Start()
     {
-        initialRotationY = NormalizeAngle(transform.eulerAngles.y);
-        currentRotationY = initialRotationY;
+        // Initialize Kinect
+        sensor = KinectSensor.GetDefault();
+        if (sensor != null && sensor.IsAvailable)
+        {
+            bodyFrameReader = sensor.BodyFrameSource.OpenReader();
+            sensor.Open();
+        }
+
         controller = GetComponent<CharacterController>();
         animator = GetComponentInChildren<Animator>();
 
         // Audio setup
-        audioSource = GetComponent<AudioSource>();
+        audioSource = GetComponent<UnityEngine.AudioSource>();
         if (audioSource == null)
         {
-            audioSource = gameObject.AddComponent<AudioSource>();
+            audioSource = GetComponent<UnityEngine.AudioSource>();
         }
 
         // Play background music
@@ -95,55 +96,37 @@ public class PlayerController : MonoBehaviour
     {
         if (isGameOver || hasWon) return;
 
-        // --- GAME FREEZE CHECK ---
-        if (GameManager.Instance != null && !GameManager.Instance.isGameActive)
-        {
-            animator.SetBool("isRunning", false);
-            return;
-        }
-
         if (isWalkingToDestination)
         {
             WalkToDestination();
             return;
         }
 
-        if (useKinect)
+        Vector3 forwardMovement = transform.forward * moveSpeed * Time.deltaTime;
+        if (controller.enabled)
         {
-            ProcessKinectInput();
-        }
-        else
-        {
-            ProcessKeyboardInput();
+            controller.Move(forwardMovement);
         }
 
-        // Gravity
+        Quaternion userRotation = GetKinectRotation();
+
+        if (userRotation != Quaternion.identity)
+        {
+            // Apply an offset to correct the initial rotation
+            Quaternion rotationOffset = Quaternion.Euler(0, 90, 0); // Example offset, adjust as needed
+            Quaternion adjustedRotation = userRotation * rotationOffset;
+
+            // Smoothly apply the adjusted rotation
+            transform.rotation = Quaternion.Slerp(transform.rotation, adjustedRotation, Time.deltaTime * rotationSpeed);
+        }
+
         if (!controller.isGrounded)
         {
             controller.Move(Vector3.down * 9.8f * Time.deltaTime);
         }
-    }
 
-    private void ProcessKeyboardInput()
-    {
-        float vertical = 1f; // Auto run? Or Input.GetAxis("Vertical")? 
-        // User original had fixed vertical = 1f; implies auto-run.
-        // But let's respect input if they want keyboard control
-        // float vertical = Input.GetAxis("Vertical"); 
-        
-        float horizontal = Input.GetAxis("Horizontal");
-
-        if (horizontal != 0)
+        if (controller.velocity.magnitude > 0)
         {
-            float targetRotationY = currentRotationY + horizontal * rotationSpeed * Time.deltaTime;
-            currentRotationY = Mathf.Clamp(targetRotationY, initialRotationY - 30f, initialRotationY + 30f);
-            transform.rotation = Quaternion.Euler(0, currentRotationY, 0);
-        }
-
-        if (vertical != 0)
-        {
-            Vector3 forwardMovement = transform.forward * vertical * moveSpeed * Time.deltaTime;
-            controller.Move(forwardMovement);
             animator.SetBool("isRunning", true);
         }
         else
@@ -152,81 +135,70 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private void ProcessKinectInput()
+
+    private Quaternion GetKinectRotation()
     {
-        KinectManager km = KinectManager.Instance;
-        if (km == null || !km.IsInitialized())
+        if (bodyFrameReader == null) return Quaternion.identity;
+
+        using (var frame = bodyFrameReader.AcquireLatestFrame())
         {
-            animator.SetBool("isRunning", false);
-            return;
+            if (frame == null) return Quaternion.identity;
+
+            if (bodies == null)
+            {
+                bodies = new Body[sensor.BodyFrameSource.BodyCount];
+            }
+
+            frame.GetAndRefreshBodyData(bodies);
+
+            foreach (var body in bodies)
+            {
+                if (body == null || !body.IsTracked) continue;
+
+                JointOrientation spineOrientation = body.JointOrientations[JointType.SpineMid];
+                Quaternion kinectRotation = new Quaternion(
+                    spineOrientation.Orientation.X,
+                    -spineOrientation.Orientation.Y,
+                    spineOrientation.Orientation.Z,
+                    spineOrientation.Orientation.W
+                );
+
+                // Log the rotation for debugging
+                Debug.Log($"Kinect Rotation (Raw): {kinectRotation.eulerAngles}");
+
+                return kinectRotation;
+            }
         }
 
-        // LOCKING LOGIC:
-        // If we don't have a locked user, try to find the Primary one.
-        if (lockedUserId == 0)
-        {
-            long potentialId = km.GetPrimaryUserID();
-            if (potentialId != 0)
-            {
-                lockedUserId = potentialId;
-                Debug.Log($"[PlayerController] Locked onto UserID: {lockedUserId}");
-            }
-            else
-            {
-                // No user found to start with
-                animator.SetBool("isRunning", false);
-                return;
-            }
-        }
-
-        // We check if the locked user is still detected.
-        // If they are gone, we stop moving (effectively pausing/resetting).
-        // Since custom API isn't fully known, we assume if GetJointOrientation returns valid data, we are good.
-        // Or we check km.IsUserDetected(lockedUserId) if that exists.
-        // Fallback: If GetPrimaryUserID doesn't match and locked user is *lost*, we might be in trouble.
-        // But "IsUserDetected" usually checks ANY user. 
-        // We will just trust the lockedUserId. If the user leaves, the rotations usually freeze or zero out.
-
-        // MOVEMENT
-        Vector3 forwardMove = transform.forward * moveSpeed * Time.deltaTime;
-        controller.Move(forwardMove);
-        animator.SetBool("isRunning", true);
-
-        // ROTATION
-        // Use the locked ID
-        Quaternion userRot = km.GetJointOrientation(lockedUserId, (int)trackedJoint, mirrorUser);
-        
-        // STABILIZATION:
-        // User reported unwanted X/Z tilting. We strictly want Y-axis rotation (Yaw).
-        // converting to Euler, masking Y, back to Quaternion.
-        Vector3 userEuler = userRot.eulerAngles;
-        Quaternion flatUserRot = Quaternion.Euler(0, userEuler.y, 0);
-
-        // Use the adjustable offset (Set to -90 based on your scene setup)
-        Quaternion rotationOffset = Quaternion.Euler(0, kinectRotationYOffset, 0); 
-        
-        // Combine: Offset applied to the flattened rotation
-        Quaternion targetRotation = flatUserRot * rotationOffset;
-        
-        // Apply smoothing
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * rotationSpeed / 10f);
+        return Quaternion.identity;
     }
 
 
-    private float NormalizeAngle(float angle)
+    void OnDestroy()
     {
-        while (angle > 180f) angle -= 360f;
-        while (angle < -180f) angle += 360f;
-        return angle;
+        if (bodyFrameReader != null)
+        {
+            bodyFrameReader.Dispose();
+            bodyFrameReader = null;
+        }
+
+        if (sensor != null && sensor.IsOpen)
+        {
+            sensor.Close();
+            sensor = null;
+        }
     }
 
     void WalkToDestination()
     {
         Vector3 direction = (targetDestination.position - transform.position).normalized;
+
         Vector3 movement = direction * moveSpeed * Time.deltaTime;
         controller.Move(movement);
+
         Quaternion targetRotation = Quaternion.LookRotation(direction);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+
         animator.SetBool("isRunning", true);
 
         if (Vector3.Distance(transform.position, targetDestination.position) < 0.5f)
@@ -326,7 +298,6 @@ void OnTriggerEnter(Collider other)
     {
         if (hasWon) return;
         hasWon = true;
-        lockedUserId = 0; // Reset lock for next game
 
         Debug.Log("You Win!");
 
@@ -351,16 +322,21 @@ void OnTriggerEnter(Collider other)
         {
             audioSource.PlayOneShot(winSound);
         }
-        
-        // Enable gestures for UI interaction
-        if (GameManager.Instance != null) GameManager.Instance.SetGesturesActive(true);
+    }
+
+    private void StopAllBarrels()
+    {
+        RollBarrel[] barrels = FindObjectsOfType<RollBarrel>();
+        foreach (RollBarrel barrel in barrels)
+        {
+            barrel.StopTorque();
+        }
     }
 
     public void HandleGameOver()
     {
         if (isGameOver) return;
         isGameOver = true;
-        lockedUserId = 0; // Reset lock for next game
 
         Debug.Log("Game Over!");
 
@@ -388,26 +364,13 @@ void OnTriggerEnter(Collider other)
         {
             audioSource.PlayOneShot(deathSound);
         }
-        
-        // Enable gestures for UI interaction
-        if (GameManager.Instance != null) GameManager.Instance.SetGesturesActive(true);
-    }
-
-    private void StopAllBarrels()
-    {
-        RollBarrel[] barrels = FindObjectsOfType<RollBarrel>();
-        foreach (RollBarrel barrel in barrels)
-        {
-            barrel.StopTorque();
-        }
     }
 
     private void UpdateCountText()
     {
-        countText.text = count.ToString();
+        countText.text = "Money: " + count + " / " + maxCount;
     }
-
-    private IEnumerator SwitchToFinaleCamera()
+        private IEnumerator SwitchToFinaleCamera()
     {
         Debug.Log("Switching to finale camera...");
         float timer = 0f;
