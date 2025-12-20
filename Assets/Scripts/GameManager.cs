@@ -39,52 +39,53 @@ public class GameManager : MonoBehaviour
 
     System.Collections.IEnumerator WarmupRoutine()
     {
-        // Wait distinct time for scene to settle
+        // 1. Initial wait to let the scene load and previous instance stabilize
         yield return new WaitForSeconds(0.5f);
 
-        Debug.Log("[GameManager] Warmup Routine: Attempting to patch KinectManager state...");
+        Debug.Log("[GameManager] Warmup: Patching KinectManager state...");
         
         KinectManager km = KinectManager.Instance;
         if (km != null)
         {
-            // 1. Force Clear Users to reset detection logic
+            // CRITICAL FIX: Explicitly clear the Primary User ID.
+            // Even if users are cleared, the 'Primary' variable might hold a stale ID,
+            // causing PlayerController to lock onto a ghost and run forward (Identity rotation).
+            km.SetPrimaryUserID(0);
+            Debug.Log("[GameManager] Forced SetPrimaryUserID(0)");
+            
+            // 2. Clear all users
             km.ClearKinectUsers();
             Debug.Log("[GameManager] Forced ClearKinectUsers()");
 
-            // 2. REFRESH AVATAR CONTROLLERS (The Persistent Manager holds old references!)
-            // We need to find the ones in THIS scene and give them to the Manager.
+            // 3. Refresh references (Avatars) explicitly
             if (km.avatarControllers != null)
             {
                 km.avatarControllers.Clear();
                 AvatarController[] avatars = FindObjectsOfType<AvatarController>();
-                foreach(var av in avatars)
-                {
-                    km.avatarControllers.Add(av);
-                }
-                Debug.Log($"[GameManager] Refreshed Avatars: {km.avatarControllers.Count}");
+                foreach(var av in avatars) km.avatarControllers.Add(av);
             }
             
-            // 3. REFRESH GESTURE LISTENERS
             if (km.gestureListeners != null)
             {
                 km.gestureListeners.Clear();
-                // Find all MonoBehaviours and check interface
-                MonoBehaviour[] allScripts = FindObjectsOfType<MonoBehaviour>();
-                foreach(var script in allScripts)
+                MonoBehaviour[] scripts = FindObjectsOfType<MonoBehaviour>();
+                foreach(var s in scripts)
                 {
-                    if (script is KinectGestures.GestureListenerInterface && script.enabled)
-                    {
-                        km.gestureListeners.Add(script);
-                    }
+                    if (s is KinectGestures.GestureListenerInterface && s.enabled)
+                        km.gestureListeners.Add(s);
                 }
-                Debug.Log($"[GameManager] Refreshed Gesture Listeners: {km.gestureListeners.Count}");
             }
         }
+        else
+        {
+             Debug.LogWarning("[GameManager] KinectManager not found during warmup!");
+        }
 
-        // Wait a bit more for the Clear to take effect
-        yield return new WaitForSeconds(0.5f);
+        // 4. Wait again to ensure internal state updates (frame cycle)
+        yield return new WaitForSeconds(1.0f);
         
         isWarmupComplete = true;
+        Debug.Log("[GameManager] Warmup Complete. Checking for users...");
     }
 
     void Update()
