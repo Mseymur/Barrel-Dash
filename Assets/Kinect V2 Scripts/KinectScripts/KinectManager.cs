@@ -2841,7 +2841,8 @@ public class KinectManager : MonoBehaviour
 
     void OnApplicationQuit()
     {
-        OnDestroy();
+        // Only close sensor when application is actually quitting
+        ShutdownKinectSensor();
     }
 
 	void OnDestroy() 
@@ -2849,16 +2850,36 @@ public class KinectManager : MonoBehaviour
 		if (instance == null || instance != this)
 			return;
         
-        Debug.Log("[KinectManager] OnDestroy called on Persistent Instance! Shutting down sensor.");
-		
-		//Debug.Log("KM was destroyed");
+        // FIX: Don't close sensor on scene reload - only on app quit
+        // OnDestroy can be called during scene reloads even for persistent objects
+        // We only want to close the sensor when the application is actually quitting
+        if (Application.isPlaying)
+        {
+            Debug.Log("[KinectManager] OnDestroy called during scene reload. Keeping sensor open (persistent instance).");
+            // Don't close sensor - just clear instance reference if needed
+            // The sensor stays open for the next scene
+            return;
+        }
+        
+        // Only close if application is not playing (editor stop or app quit)
+        Debug.Log("[KinectManager] OnDestroy called - Application not playing. Shutting down sensor.");
+        ShutdownKinectSensor();
+	}
 
-		// shut down the Kinect on quitting.
-		if(kinectInitialized)
-		{
-			// stop the background thread
-			kinectReaderRunning = false;
-			
+    /// <summary>
+    /// Actually shuts down the Kinect sensor. Called only on app quit.
+    /// </summary>
+    private void ShutdownKinectSensor()
+    {
+        if (instance == null || instance != this)
+            return;
+
+        // shut down the Kinect on quitting.
+        if(kinectInitialized)
+        {
+            // stop the background thread
+            kinectReaderRunning = false;
+            
 //            if(useOwnThread)
 //            { 
 //                // set below false to avoid external thread stack in while(x) { Sleep(1); } in many places in KinectInterop.cs 
@@ -2891,7 +2912,7 @@ public class KinectManager : MonoBehaviour
 
         kinectInitFailed = false;
         instance = null;
-	}
+    }
 
 	void OnGUI()
     {
