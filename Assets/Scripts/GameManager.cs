@@ -39,9 +39,51 @@ public class GameManager : MonoBehaviour
 
     System.Collections.IEnumerator WarmupRoutine()
     {
-        // Wait for 1 second to ensure KinectManager handles the scene load 
-        // and clears old user data.
-        yield return new WaitForSeconds(1.0f);
+        // Wait distinct time for scene to settle
+        yield return new WaitForSeconds(0.5f);
+
+        Debug.Log("[GameManager] Warmup Routine: Attempting to patch KinectManager state...");
+        
+        KinectManager km = KinectManager.Instance;
+        if (km != null)
+        {
+            // 1. Force Clear Users to reset detection logic
+            km.ClearKinectUsers();
+            Debug.Log("[GameManager] Forced ClearKinectUsers()");
+
+            // 2. REFRESH AVATAR CONTROLLERS (The Persistent Manager holds old references!)
+            // We need to find the ones in THIS scene and give them to the Manager.
+            if (km.avatarControllers != null)
+            {
+                km.avatarControllers.Clear();
+                AvatarController[] avatars = FindObjectsOfType<AvatarController>();
+                foreach(var av in avatars)
+                {
+                    km.avatarControllers.Add(av);
+                }
+                Debug.Log($"[GameManager] Refreshed Avatars: {km.avatarControllers.Count}");
+            }
+            
+            // 3. REFRESH GESTURE LISTENERS
+            if (km.gestureListeners != null)
+            {
+                km.gestureListeners.Clear();
+                // Find all MonoBehaviours and check interface
+                MonoBehaviour[] allScripts = FindObjectsOfType<MonoBehaviour>();
+                foreach(var script in allScripts)
+                {
+                    if (script is KinectGestures.GestureListenerInterface && script.enabled)
+                    {
+                        km.gestureListeners.Add(script);
+                    }
+                }
+                Debug.Log($"[GameManager] Refreshed Gesture Listeners: {km.gestureListeners.Count}");
+            }
+        }
+
+        // Wait a bit more for the Clear to take effect
+        yield return new WaitForSeconds(0.5f);
+        
         isWarmupComplete = true;
     }
 
