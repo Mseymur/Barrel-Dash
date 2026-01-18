@@ -5,6 +5,9 @@ public class EndMenu : MonoBehaviour
 {
     public void RestartGame()
     {
+        // Signal that this is a restart
+        GameManager.IsRestarting = true;
+        
         // Reload the current scene
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }

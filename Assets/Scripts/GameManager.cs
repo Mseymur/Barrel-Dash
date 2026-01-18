@@ -4,6 +4,7 @@ using TMPro;
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
+    public static bool IsRestarting = false;
 
     [Header("Game State")]
     public bool isGameActive = false;
@@ -47,15 +48,22 @@ public class GameManager : MonoBehaviour
         KinectManager km = KinectManager.Instance;
         if (km != null)
         {
-            // CRITICAL FIX: Explicitly clear the Primary User ID.
-            // Even if users are cleared, the 'Primary' variable might hold a stale ID,
-            // causing PlayerController to lock onto a ghost and run forward (Identity rotation).
-            km.SetPrimaryUserID(0);
-            Debug.Log("[GameManager] Forced SetPrimaryUserID(0)");
-            
-            // 2. Clear all users
-            km.ClearKinectUsers();
-            Debug.Log("[GameManager] Forced ClearKinectUsers()");
+            if (!IsRestarting)
+            {
+                // NORMAL BOOT: Clear everything to ensure clean slate
+                km.SetPrimaryUserID(0);
+                Debug.Log("[GameManager] Forced SetPrimaryUserID(0)");
+                
+                // 2. Clear all users
+                km.ClearKinectUsers();
+                Debug.Log("[GameManager] Forced ClearKinectUsers()");
+            }
+            else
+            {
+                // RESTART: Preserve users for instant play
+                Debug.Log("[GameManager] Restart Detected. Skipping User Clear.");
+                IsRestarting = false; // Reset flag
+            }
 
             // 3. Refresh references (Avatars) explicitly
             if (km.avatarControllers != null)
@@ -111,10 +119,16 @@ public class GameManager : MonoBehaviour
 
         // Now that we've waited, this should return FALSE initially on restart,
         // because KinectManager cleared the users.
+        /* HANDLED BY ExhibitionStateManager
         if (km.IsUserDetected())
         {
             // User found! Start game.
             StartGame();
+        }
+        */
+        if (km.IsUserDetected())
+        {
+             if (statusText) statusText.text = "Please Stand Still to Lock In...";
         }
         else
         {
