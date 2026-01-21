@@ -1543,7 +1543,7 @@ MonoBehaviour:
   minUserDistance: 0.5
   maxUserDistance: 0
   maxLeftRightDistance: 0
-  maxTrackedUsers: 4
+  maxTrackedUsers: 1
   showTrackedUsersOnly: 1
   userDetectionOrder: 0
   centralPosition: {x: 0, y: 0, z: 0}

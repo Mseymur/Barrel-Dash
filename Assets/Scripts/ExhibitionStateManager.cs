@@ -216,7 +216,23 @@ public class ExhibitionStateManager : MonoBehaviour
                 return; 
             }
             
-            // Grace period over. Now counts as Abandonment.
+            // Grace period over.
+            
+            // RECOVERY ATTEMPT:
+            // Before we abandon, let's see if there is ANYONE valid in the play zone.
+            // Maybe the user just got a new ID (left/re-entered) or a new player swapped in instantly.
+            long replacementUser = GetBestUserInZone(km);
+            if (replacementUser != 0)
+            {
+                Debug.Log($"[ExhibitionManager] Recovered Session! Swapped to User {replacementUser}");
+                km.SetPrimaryUserID(replacementUser);
+                // PlayerController will auto-sync next frame
+                gameIdleTimer = 0f;
+                _recoveryTimer = 0f;
+                return;
+            }
+
+            // No replacement found. Now counts as Abandonment.
             gameIdleTimer += Time.deltaTime;
             if (gameIdleTimer >= abandonTimeout)
             {

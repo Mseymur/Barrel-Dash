@@ -163,13 +163,25 @@ public class PlayerController : MonoBehaviour
         }
 
         // LOCKING LOGIC:
-        // If we don't have a locked user, try to find the Primary one.
+        
+        // 1. Check if we need to AUTO-SYNC with the global Primary User
+        // This handles cases where ExhibitionManager swaps the user (e.g. Recovery)
+        // or if the original user was lost and a new one assigned.
+        long globalPrimary = km.GetPrimaryUserID();
+        if (globalPrimary != 0 && globalPrimary != lockedUserId)
+        {
+             // If we currently have no user, OR if the Global Primary changed (and is valid)
+             // we accept the new master.
+             lockedUserId = globalPrimary;
+             Debug.Log($"[PlayerController] Auto-Synced to new Primary ID: {lockedUserId}");
+        }
+
+        // 2. Initial Lock (Fallback)
         if (lockedUserId == 0)
         {
-            long potentialId = km.GetPrimaryUserID();
-            if (potentialId != 0)
+            if (globalPrimary != 0)
             {
-                lockedUserId = potentialId;
+                lockedUserId = globalPrimary;
                 Debug.Log($"[PlayerController] Locked onto UserID: {lockedUserId}");
             }
             else
@@ -195,6 +207,20 @@ public class PlayerController : MonoBehaviour
 
         // ROTATION
         // Use the locked ID
+        
+        // --- PASSERBY PROTECTION ---
+        // If the user (or the person Kinect *thinks* is the user) is too close,
+        // it's likely a passerby walking in front. Ignore them.
+        Vector3 userPos = km.GetUserPosition(lockedUserId);
+        
+        // 0.8m is roughly "Arm's Length" from sensor.
+        if (userPos.z < 0.8f) 
+        {
+            // Debug.LogWarning("User too close! Signal ignored (Anti-Hijack).");
+            return; 
+        }
+        // ---------------------------
+
         Quaternion userRot = km.GetJointOrientation(lockedUserId, (int)trackedJoint, mirrorUser);
         
         // STABILIZATION:
