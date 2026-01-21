@@ -23,10 +23,19 @@ public class ExhibitionStateManager : MonoBehaviour
     public bool enableVisualFeedback = true;
     public string mainMenuSceneName = "MainMenu";
 
+    [Header("Tracking Stability")]
+    [Tooltip("Ignore users closer than this (Z-depth)")]
+    public float minZ = 0.5f;
+    [Tooltip("Ignore users further than this (Z-depth)")]
+    public float maxZ = 2.5f;
+    [Tooltip("Ignore users further than this from center (X-axis abs)")]
+    public float boundaryX = 1.5f;
+    [Tooltip("Time to wait before resetting if user is momentarily lost (Occlusion)")]
+    public float recoveryGracePeriod = 1.0f;
+
     [Header("References")]
     public LockInFeedback lockInFeedbackPrefab; 
     
-    // We observe these to know when to enter "Result" state
     // We observe these to know when to enter "Result" state
     public GameObject winCanvas;
     [Tooltip("The 'Warning' text object inside the Win Canvas")]
@@ -44,6 +53,7 @@ public class ExhibitionStateManager : MonoBehaviour
     private long _pendingUserId = 0;
     private LockInFeedback _feedbackInstance;
     private GameObject _activeWarningText; // Found dynamically
+    private float _recoveryTimer = 0f; // For occlusion handling
 
     void Start()
     {
@@ -128,22 +138,19 @@ public class ExhibitionStateManager : MonoBehaviour
 
     void HandleIdle(KinectManager km)
     {
-        if (km.GetUsersCount() > 0)
-        {
-            long userId = km.GetPrimaryUserID();
-            if (userId == 0) userId = km.GetUserIdByIndex(0);
+        // SMART SELECTION:
+        // Use the helper to find the BEST user in the zone, not just the first one.
+        long bestUser = GetBestUserInZone(km);
 
-            if (userId != 0)
-            {
-                _pendingUserId = userId;
-                curStateTimer = 0f;
-                currentState = ExhibitionState.Scanning;
-            }
+        if (bestUser != 0)
+        {
+            _pendingUserId = bestUser;
+            curStateTimer = 0f;
+            currentState = ExhibitionState.Scanning;
         }
         else
         {
             // Abandonment Logic for Pre-Game (Wait State)
-            // Only if we are NOT in the Main Menu already
             if (SceneManager.GetActiveScene().name != mainMenuSceneName)
             {
                  gameIdleTimer += Time.deltaTime;
@@ -190,17 +197,47 @@ public class ExhibitionStateManager : MonoBehaviour
         long primaryID = km.GetPrimaryUserID();
         bool isPrimaryTracked = km.IsUserTracked(primaryID);
 
-        if (!isPrimaryTracked)
+        if (isPrimaryTracked)
         {
+            // Happy Path
+            gameIdleTimer = 0f;
+            _recoveryTimer = 0f;
+        }
+        else
+        {
+            // OCCLUSION HANDLING (Grace Period)
+            // Instead of instantly failing, we wait a bit.
+            _recoveryTimer += Time.deltaTime;
+            
+            if (_recoveryTimer < recoveryGracePeriod)
+            {
+                // We are in grace period. Do nothing yet.
+                // Optionally show a "!" icon?
+                return; 
+            }
+            
+            // Grace period over.
+            
+            // RECOVERY ATTEMPT:
+            // Before we abandon, let's see if there is ANYONE valid in the play zone.
+            // Maybe the user just got a new ID (left/re-entered) or a new player swapped in instantly.
+            long replacementUser = GetBestUserInZone(km);
+            if (replacementUser != 0)
+            {
+                Debug.Log($"[ExhibitionManager] Recovered Session! Swapped to User {replacementUser}");
+                km.SetPrimaryUserID(replacementUser);
+                // PlayerController will auto-sync next frame
+                gameIdleTimer = 0f;
+                _recoveryTimer = 0f;
+                return;
+            }
+
+            // No replacement found. Now counts as Abandonment.
             gameIdleTimer += Time.deltaTime;
             if (gameIdleTimer >= abandonTimeout)
             {
                 ResetGameToMenu();
             }
-        }
-        else
-        {
-            gameIdleTimer = 0f;
         }
     }
 
@@ -217,12 +254,25 @@ public class ExhibitionStateManager : MonoBehaviour
         long primaryID = km.GetPrimaryUserID();
         bool isPrimaryTracked = km.IsUserTracked(primaryID);
 
+        // Similar Occlusion logic for Result Screen?
+        // If primary is lost, we might want to wait grace period before showing Warning.
+        
         if (!isPrimaryTracked)
         {
+             _recoveryTimer += Time.deltaTime;
+             if (_recoveryTimer < recoveryGracePeriod) 
+             {
+                 // Wait for grace period before declaring lost
+                 return;
+             }
+        
+            // ACTIVATE WARNING
             if (_activeWarningText && !_activeWarningText.activeSelf) 
                 _activeWarningText.SetActive(true);
 
-            long potentialNewID = km.GetUserIdByIndex(0);
+            // SCAN FOR NEW PLAYERS USING SMART SELECTION
+            long potentialNewID = GetBestUserInZone(km);
+            
             if (potentialNewID != 0 && potentialNewID != primaryID)
             {
                 if (_pendingUserId != potentialNewID)
@@ -235,15 +285,18 @@ public class ExhibitionStateManager : MonoBehaviour
                 
                 if (enableVisualFeedback && _feedbackInstance != null)
                 {
+                    // Show lock-in for the new person
                     float progress = Mathf.Clamp01(gameIdleTimer / lockInDuration);
                     _feedbackInstance.UpdateProgress(progress);
                 }
 
                 if (gameIdleTimer >= lockInDuration)
                 {
+                    // SWAP USER
                     km.SetPrimaryUserID(potentialNewID);
                     if (_activeWarningText) _activeWarningText.SetActive(false);
                     if (_feedbackInstance) _feedbackInstance.Hide();
+                    _recoveryTimer = 0f;
                 }
             }
             else
@@ -254,6 +307,8 @@ public class ExhibitionStateManager : MonoBehaviour
         }
         else
         {
+            // Primary is present.
+            _recoveryTimer = 0f;
             if (_activeWarningText && _activeWarningText.activeSelf) 
                 _activeWarningText.SetActive(false);
         }
@@ -321,5 +376,64 @@ public class ExhibitionStateManager : MonoBehaviour
             SceneManager.LoadScene("MainMenu");
         else 
             SceneManager.LoadScene(mainMenuSceneName);
+    }
+
+    // --- HELPER METHODS ---
+
+    private long GetBestUserInZone(KinectManager km)
+    {
+        // 1. Get ALL candidates
+        int count = km.GetUsersCount();
+        if (count == 0) return 0;
+
+        long bestUser = 0;
+        float bestDistanceSq = float.MaxValue;
+        
+        // 2. Iterate and Filter
+        for (int i = 0; i < count; i++)
+        {
+            long userId = km.GetUserIdByIndex(i);
+            if (userId == 0) continue;
+            
+            // Check Bounds
+            if (IsUserInPlayZone(km, userId))
+            {
+                // Calculate Distance to (0,0,0) - or just Z really
+                Vector3 pos = km.GetUserPosition(userId);
+                float distSq = pos.x*pos.x + pos.z*pos.z; // Distance from center
+                
+                // Prioritize Closest
+                if (distSq < bestDistanceSq)
+                {
+                    bestDistanceSq = distSq;
+                    bestUser = userId;
+                }
+            }
+        }
+        
+        return bestUser;
+    }
+
+    private bool IsUserInPlayZone(KinectManager km, long userId)
+    {
+        Vector3 pos = km.GetUserPosition(userId);
+        
+        // Z Depth Check
+        if (pos.z < minZ || pos.z > maxZ) return false;
+        
+        // X Width Check (Symetric)
+        if (Mathf.Abs(pos.x) > boundaryX) return false;
+        
+        return true;
+    }
+
+    void OnDrawGizmos()
+    {
+        Gizmos.color = Color.green;
+        // Draw the Play Zone Box relative to the Kinect (assuming this script is near Kinect or 0,0,0)
+        // Adjust center and size
+        Vector3 center = new Vector3(0, 1.0f, (minZ + maxZ) * 0.5f);
+        Vector3 size = new Vector3(boundaryX * 2, 2.0f, maxZ - minZ);
+        Gizmos.DrawWireCube(center, size);
     }
 }
