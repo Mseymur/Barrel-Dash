@@ -1,0 +1,49 @@
+---
+
+## ✅ LICENSE (protective, “ask-permission” style)
+
+This is the “protected product” approach you asked for. It’s not OSI open-source, but it’s **valid** and matches your intent: people can look and test, but they can’t reuse/ship it without permission.
+
+Create a file named `LICENSE` in the repo root and paste:
+
+```text
+BARREL DASH LICENSE (PROPRIETARY / EVALUATION ONLY)
+Version 1.0
+
+Copyright (c) 2024–2026 Seymur Mammadov
+All rights reserved.
+
+Permission is hereby granted to any person obtaining a copy of this repository and its contents (the “Software”) to
+view, clone, and run the Software locally for personal, educational, or evaluation purposes only, subject to the
+limitations below.
+
+YOU MAY:
+1) View the source code and assets.
+2) Clone the repository and build/run the project locally for personal, educational, or evaluation use.
+3) Share links to this repository without redistributing copies of the Software itself.
+
+YOU MAY NOT, WITHOUT PRIOR WRITTEN PERMISSION FROM THE COPYRIGHT HOLDER:
+1) Redistribute the Software (in source or binary form), in whole or in part.
+2) Publish, sell, sublicense, or commercially exploit the Software or any derivative works.
+3) Create derivative works (including modified versions, ports, remixes, or adaptations) intended for distribution.
+4) Use any characters, art, music, branding, names, screenshots, or other assets from the Software in another product.
+5) Remove or alter any copyright, attribution, or license notices.
+
+ATTRIBUTION:
+If you reference this project publicly (e.g., blog post, talk, coursework), you must credit:
+“Barrel Dash — Seymur Mammadov” and link to the original repository.
+
+THIRD-PARTY COMPONENTS:
+This repository may include or reference third-party SDKs, drivers, runtimes, DLLs, and other components.
+Those components remain the property of their respective owners and are governed by their own licenses.
+This license does not grant any rights to third-party components beyond what their original licenses allow.
+
+NO WARRANTY:
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+CONTACT:
+For permissions (commercial use, redistribution, collaborations), contact:
+mseymur2k@gmail.com
