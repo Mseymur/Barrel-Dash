@@ -1,12 +1,3 @@
----
-
-## ✅ LICENSE (protective, “ask-permission” style)
-
-This is the “protected product” approach you asked for. It’s not OSI open-source, but it’s **valid** and matches your intent: people can look and test, but they can’t reuse/ship it without permission.
-
-Create a file named `LICENSE` in the repo root and paste:
-
-```text
 BARREL DASH LICENSE (PROPRIETARY / EVALUATION ONLY)
 Version 1.0
 
