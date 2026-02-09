@@ -79,7 +79,7 @@ Created in 1.5 months as a collaborative development project.
 
 *   **Seymur Mammadov** - Developer & Engineering
 *   **Alice Zanutti** - Design & Art
-*   **Felix Prince** - Design & Production
+*   **Felix Prince** - Design
 
 ## 📄 License
 
