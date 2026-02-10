@@ -82,7 +82,7 @@ Created in 1.5 months as a collaborative development project.
 *   **Felix Prince** - Design
 
 ## 📄 License
-
+[License](license)
 
 
 ---
